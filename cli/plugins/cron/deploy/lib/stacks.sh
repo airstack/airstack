@@ -10,28 +10,33 @@
 
 all_install_dirs() {
   local dir="${STACKS_MANIFEST_DIR:?STACKS_MANIFEST_DIR not set}"
-  [ -d "$dir" ] || return
+  [ -d "$dir" ] || return 0
   for manifest in "$dir"/*.env; do
     [ -f "$manifest" ] || continue
-    grep '^INSTALL_DIR=' "$manifest" | cut -d= -f2-
+    get_manifest_value "$manifest" INSTALL_DIR
   done
 }
 
+# Containers the ROOT daemon should be running. Stacks run by a dev user (RUN_USER_KIND=dev) live
+# in that user's rootless daemon, which root's `docker ps` cannot see, so they are skipped here.
 all_expected_containers() {
   local dir="${STACKS_MANIFEST_DIR:?STACKS_MANIFEST_DIR not set}"
-  [ -d "$dir" ] || return
+  [ -d "$dir" ] || return 0
   for manifest in "$dir"/*.env; do
     [ -f "$manifest" ] || continue
+    [ "$(get_manifest_value "$manifest" RUN_USER_KIND)" = "dev" ] && continue
     local install_dir
-    install_dir=$(grep '^INSTALL_DIR=' "$manifest" | cut -d= -f2-)
+    install_dir=$(get_manifest_value "$manifest" INSTALL_DIR)
     [ -n "$install_dir" ] || continue
     local compose="${install_dir}/docker-compose.yml"
     [ -f "$compose" ] || continue
-    grep 'container_name:' "$compose" | sed 's/.*container_name:[[:space:]]*//' | tr -d ' "'"'"
+    { grep 'container_name:' "$compose" || true; } | sed 's/.*container_name:[[:space:]]*//' | tr -d ' "'"'"
   done
 }
 
+# Prints the value, or nothing when the key is absent. Never fails: callers run under
+# `set -euo pipefail`, and with one manifest per stack instance most manifests lack most keys.
 get_manifest_value() {
   local manifest="$1" key="$2"
-  grep "^${key}=" "$manifest" 2>/dev/null | cut -d= -f2-
+  { grep "^${key}=" "$manifest" 2>/dev/null || true; } | cut -d= -f2-
 }

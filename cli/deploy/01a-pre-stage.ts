@@ -46,6 +46,9 @@ export async function preStage(ctx: DeployContext): Promise<void> {
   ctx.manifest.entries.INSTALL_DIR = installDir
   ctx.manifest.entries.CONFIG_DIR = configDir
   ctx.manifest.entries.STATE_DIR = stateDir
+  // Host scripts use these to know which Docker daemon runs the stack (dev users: rootless).
+  ctx.manifest.entries.RUN_USER = config.host.appUser
+  ctx.manifest.entries.RUN_USER_KIND = String((config.stack as Record<string, unknown>).runUserKind || 'stack')
 
   if (!ctx.errors.some(e => e.phase === 'pre-stage' && e.fatal)) {
     ctx.phaseStatus.push({ phase: 'pre-stage', success: true, message: 'Ready' })
