@@ -353,10 +353,17 @@ async function postSyncHook(ctx: DeployContext, raw: unknown): Promise<void> {
 // Note: /etc/ file promotion (cron.d, stacks, logrotate.d) is handled by
 // core post-sync phase, not this plugin. The cron plugin only stages files.
 
-export function register(_config: unknown): Plugin {
+/** Host scripts (host-status/) ship only to a unit that runs a host_ cron (the machine unit). */
+function usesHostScripts(config: unknown): boolean {
+  const crons = (config as { crons?: Record<string, unknown> } | null)?.crons ?? {}
+  return Object.keys(crons).some((name) => name.startsWith('host_'))
+}
+
+export function register(config: unknown): Plugin {
   return {
     name: 'cron',
     scope: 'any',
+    ...(usesHostScripts(config) ? {} : { deployExclude: ['host-status'] }),
     templates: {
       'crons/.env': { src: 'templates/.env.hbs' },
     },

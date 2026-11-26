@@ -223,6 +223,8 @@ export interface Plugin {
   sourceDir?: string
   /** Override for deploy source dir. Defaults to {sourceDir}/deploy/ */
   deploySourceDir?: string
+  /** Top-level entries of the deploy source dir NOT to copy for this unit (e.g. ['host-status']). */
+  deployExclude?: string[]
   /** Persistent data directory on VPS for runtime data (git repos, instances, build artifacts).
    *  Survives deploys. Distinct from plugins/{name}/ (rsync'd) and STATE_DIR (state files).
    *  Core ensures this directory exists on VPS during post-sync. */

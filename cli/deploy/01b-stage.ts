@@ -78,7 +78,8 @@ export async function stage(ctx: DeployContext): Promise<void> {
       ?? (plugin.sourceDir ? join(plugin.sourceDir, 'deploy') : undefined)
     if (deploySource && existsSync(deploySource) && statSync(deploySource).isDirectory()) {
       const dest = join(ctx.deployDir, 'plugins', plugin.name)
-      cpSync(deploySource, dest, { recursive: true })
+      const skip = new Set((plugin.deployExclude ?? []).map((e) => join(deploySource, e)))
+      cpSync(deploySource, dest, { recursive: true, filter: (src) => !skip.has(src) })
     }
   }
 

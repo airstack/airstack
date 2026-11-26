@@ -1426,3 +1426,11 @@ describe('cron plugin: script field with arguments', () => {
     expect(existsSync(join(ctx.deployDir, 'crons', 'runner.sh --mode fast'))).toBe(false)
   })
 })
+
+describe('cron host scripts ship only with host_ crons', () => {
+  it('a stack unit without host_ crons excludes host-status/', async () => {
+    const { register } = await import('../../../cli/plugins/cron/index')
+    expect(register({ crons: { backup: '3:00 AM' } }).deployExclude).toEqual(['host-status'])
+    expect(register({ crons: { host_alerter: 'every 15 min' } }).deployExclude).toBeUndefined()
+  })
+})
