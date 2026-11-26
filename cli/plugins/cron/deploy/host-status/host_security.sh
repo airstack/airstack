@@ -44,8 +44,7 @@
 #   SECURITY_CLOUDFLARED_LOG_LINES        [5000]  how many log lines to search
 #   SECURITY_TUNNEL_DOMAINS="a.example"   []      static hostname list used when the logs show none
 #   SECURITY_EXPECT_DOMAINS="a.example"   []      WARN when a listed hostname is missing or an extra one appears
-#   SECURITY_TELEGRAM_MAX_LINES=25        [25]    max lines in the Telegram section body
-#   SECURITY_TELEGRAM_MAX_INFO=8          [8]     max INFO lines in the Telegram section
+#   SECURITY_TELEGRAM_MAX_INFO=8          [8]     max detail (INFO) lines in the Telegram message, besides the reachability block
 #   SECURITY_TELEGRAM_BUDGET=3000         [3000]  max characters of the section (host_alerter passes what is left)
 #   SECURITY_STATE_DIR=...                [$STATE_DIR/host-health, else /var/lib/host-security]
 #
@@ -93,7 +92,6 @@ SECURITY_CLOUDFLARED_CONTAINERS="${SECURITY_CLOUDFLARED_CONTAINERS:-*cloudflared
 SECURITY_CLOUDFLARED_LOG_LINES="${SECURITY_CLOUDFLARED_LOG_LINES:-5000}"
 SECURITY_TUNNEL_DOMAINS="${SECURITY_TUNNEL_DOMAINS:-}"
 SECURITY_EXPECT_DOMAINS="${SECURITY_EXPECT_DOMAINS:-}"
-SECURITY_TELEGRAM_MAX_LINES="${SECURITY_TELEGRAM_MAX_LINES:-25}"
 SECURITY_TELEGRAM_MAX_INFO="${SECURITY_TELEGRAM_MAX_INFO:-8}"
 SECURITY_TELEGRAM_BUDGET="${SECURITY_TELEGRAM_BUDGET:-3000}"
 if [[ -n "${SECURITY_STATE_DIR:-}" ]]; then SEC_STATE="$SECURITY_STATE_DIR"
@@ -110,12 +108,11 @@ ALL_CHECKS="firewall tailscale reachability docker tunnel access cloudflared ssh
 die() { echo "host_security: ERROR: $*" >&2; exit 2; }
 for v in SECURITY_CHECK_TIMEOUT SECURITY_SSH_FAIL_WARN SECURITY_CONN_LEARN_DAYS SECURITY_CONN_KEEP_DAYS \
          SECURITY_CONN_MAX SECURITY_CLOUDFLARED_METRICS_PORT SECURITY_CLOUDFLARED_MIN_CONNECTIONS \
-         SECURITY_CLOUDFLARED_LOG_LINES SECURITY_TELEGRAM_MAX_LINES SECURITY_TELEGRAM_MAX_INFO \
+         SECURITY_CLOUDFLARED_LOG_LINES SECURITY_TELEGRAM_MAX_INFO \
          SECURITY_TELEGRAM_BUDGET NOW; do
   [[ "${!v}" =~ ^[0-9]+$ ]] || die "$v must be a whole number (got '${!v}')"
 done
 (( SECURITY_CHECK_TIMEOUT >= 1 )) || die "SECURITY_CHECK_TIMEOUT must be at least 1"
-(( SECURITY_TELEGRAM_MAX_LINES >= 5 )) || die "SECURITY_TELEGRAM_MAX_LINES must be at least 5"
 case "$SECURITY_BUILTIN" in true|false) ;; *) die "SECURITY_BUILTIN must be true or false (got '$SECURITY_BUILTIN')" ;; esac
 for p in $SECURITY_OUTBOUND_OK_PORTS; do
   [[ "$p" =~ ^[0-9]+$ ]] || die "SECURITY_OUTBOUND_OK_PORTS: '$p' is not a port number"
@@ -553,7 +550,7 @@ check_cloudflared() {
   if [[ -z "$js" || -z "$n" ]]; then emit INFO cloudflared "not running / no metrics on 127.0.0.1:${SECURITY_CLOUDFLARED_METRICS_PORT}"; return 0; fi
   if (( n == 0 )); then emit FAIL cloudflared "tunnel has 0 ready connections (sites behind it are down)"
   elif (( n < SECURITY_CLOUDFLARED_MIN_CONNECTIONS )); then emit WARN cloudflared "tunnel has only $n ready connection(s) (minimum $SECURITY_CLOUDFLARED_MIN_CONNECTIONS)"
-  else emit OK cloudflared "tunnel ready, $n connections"; fi
+  else emit OK cloudflared "connected, $n connections"; fi
   return 0
 }
 
@@ -709,7 +706,7 @@ check_access() {
       if [[ "$e" == "$h" || "$e" == "$h$path" || "$e" == "${h}${path%/}" ]]; then is_exempt=true; fi
     done
     case "$state" in
-      protected) emit OK access "$label: behind Cloudflare Access" ;;
+      protected) emit OK access "$label is protected" ;;
       unknown) emit WARN access "$label: could not verify Cloudflare Access (HTTP $code)" ;;
       unprotected)
         if $is_exempt; then emit INFO access "$label: public by config (access.exempt), HTTP $code"
@@ -888,7 +885,7 @@ check_sshsources() {
       done <<<"$(head -5 <<<"$logins")"
       while read -r _ _ ip _; do ips+=" $ip"; done <<<"$logins"
       (( total > 5 )) && shown+=("+$((total - 5)) more")
-      emit INFO ssh:logins "24 h: $(join_by '; ' "${shown[@]}")"
+      emit INFO ssh:logins "$(join_by '; ' "${shown[@]}")"
     fi
   fi
   [[ -n "${ips// /}" ]] || return 0
@@ -928,9 +925,9 @@ check_accounts() {
     got=$(tr ' ' '\n' <<<"$members" | sed '/^$/d' | sort -u | tr '\n' ' '); got="${got% }"
     if [[ -n "$SECURITY_DOCKER_USERS" ]]; then
       want=$(tr ' ' '\n' <<<"$SECURITY_DOCKER_USERS" | sed '/^$/d' | sort -u | tr '\n' ' '); want="${want% }"
-      if [[ "$got" == "$want" ]]; then emit OK accounts:docker "docker group = $got"
+      if [[ "$got" == "$want" ]]; then emit OK accounts:docker "$got"
       else emit WARN accounts:docker "docker group is '$got', expected '$want' (docker group = root)"; fi
-    elif grep -q '^docker:' "$grp"; then emit INFO accounts:docker "docker group (root-equivalent): ${got:-nobody}"; fi
+    elif grep -q '^docker:' "$grp"; then emit INFO accounts:docker "${got:-nobody} (members are root-equivalent)"; fi
   fi
   local files=()
   if [[ -n "$FIX" ]]; then [[ -f "$sud" ]] && files=("$sud")
@@ -951,10 +948,10 @@ check_accounts() {
     if [[ -n "$SECURITY_SUDO_USERS" ]]; then
       got=$(awk '{ print $1 }' <<<"$sudo_lines" | sort -u | tr '\n' ' ')
       want=$(tr ' ' '\n' <<<"$SECURITY_SUDO_USERS" | sed '/^$/d' | sort -u | tr '\n' ' ')
-      if [[ "$got" == "$want" ]]; then emit OK accounts:sudo "NOPASSWD sudo: $desc"
+      if [[ "$got" == "$want" ]]; then emit OK accounts:sudo "$desc"
       else emit WARN accounts:sudo "NOPASSWD sudo is '${got% }', expected '${want% }'"; fi
     else
-      emit INFO accounts:sudo "NOPASSWD sudo: $desc"
+      emit INFO accounts:sudo "$desc"
     fi
   fi
   return 0
@@ -1234,71 +1231,77 @@ trunc() {  # TEXT MAXBYTES (cuts on a UTF-8 boundary, adds …)
   while [[ -n "$s" && "${s: -1}" == [!\ -~] ]]; do s="${s%?}"; done
   printf '%s…' "$s"
 }
-tg_line() {  # EMOJI LABEL DETAIL
-  local label="$2"
-  label="${label#reachable:}"
-  printf '%s %s: %s' "$1" "$(html_esc "$label")" "$(html_esc "$(trunc "$3" 160)")"
+# Plain-language title for a check label (what a non-technical reader sees).
+tg_title() {  # LABEL STATUS
+  case "$1" in
+    firewall) echo "Firewall" ;;
+    tailscale|tailscale:netfilter) [[ "$2" == INFO ]] && echo "Tailscale" || echo "Tailscale firewall" ;;
+    reachable:unexpected) echo "Open port" ;;
+    reachable:*) echo "${1#reachable:}" ;;
+    docker) echo "Docker" ;;
+    tunnel) echo "Tunnel" ;;
+    access) echo "Cloudflare Access" ;;
+    cloudflared) echo "Tunnel" ;;
+    ssh) echo "SSH" ;;
+    ssh:failures) echo "Failed logins" ;;
+    ssh:logins) echo "Logins (24 h)" ;;
+    ssh:sessions) echo "Open sessions" ;;
+    ssh:new-source) [[ "$2" == INFO ]] && echo "SSH sources" || echo "New SSH source" ;;
+    accounts) echo "Accounts" ;;
+    accounts:docker) echo "Docker group" ;;
+    accounts:sudo) echo "Passwordless sudo" ;;
+    persistence) echo "Keys, sudoers, services" ;;
+    secrets) echo "Secret files" ;;
+    outbound) echo "Outbound connections" ;;
+    processes) echo "Processes" ;;
+    updates) echo "Automatic updates" ;;
+    *) echo "$1" ;;
+  esac
+}
+tg_line() {  # EMOJI LABEL DETAIL [STATUS]
+  printf '%s %s: %s' "$1" "$(html_esc "$(tg_title "$2" "${4:-}")")" "$(html_esc "$(trunc "$3" 200)")"
 }
 
+# Telegram output for host_alerter, as tagged lines it merges with its own health checks:
+#   CHECK|<line>   pass/fail items, problems first (❌ FAIL, ⚠️ WARN), then ✅ OK
+#   INFO|<line>    informational details (what is reachable, logins, baselines, …)
+#   ISSUES=<n>     last line: number of FAIL + WARN
+# The character budget (SECURITY_TELEGRAM_BUDGET) drops INFO lines first, then ✅ lines; problems
+# are never dropped (only shortened as a last resort).
 render_telegram() {  # RESULTS_FILE
-  local st label detail probs=() fails=() warns=() reach=() infos=() okn=0 issues=0
+  local st label detail fails=() warns=() oks=() reach=() infos=() issues=0 x
   while IFS='|' read -r st label detail; do
     case "$st" in
-      FAIL|WARN) issues=$((issues + 1)) ;;
-    esac
-    if [[ "$label" == reachable:* ]]; then
-      case "$st" in
-        FAIL) reach+=("$(tg_line 🔴 "$label" "$detail")") ;;
-        WARN) reach+=("$(tg_line ⚠️ "$label" "$detail")") ;;
-        INFO) reach+=("$(tg_line 🌐 "$label" "$detail")") ;;
-        OK) okn=$((okn + 1)) ;;
-      esac
-      continue
-    fi
-    case "$st" in
-      FAIL) fails+=("$(tg_line 🔴 "$label" "$detail")") ;;
-      WARN) warns+=("$(tg_line ⚠️ "$label" "$detail")") ;;
-      OK) okn=$((okn + 1)) ;;
-      INFO) infos+=("$(tg_line ℹ️ "$label" "$detail")") ;;
+      FAIL) issues=$((issues + 1)); fails+=("$(tg_line ❌ "$label" "$detail")") ;;
+      WARN) issues=$((issues + 1)); warns+=("$(tg_line ⚠️ "$label" "$detail")") ;;
+      OK) oks+=("$(tg_line ✅ "$label" "$detail")") ;;
+      INFO)
+        if [[ "$label" == reachable:* ]]; then reach+=("$(tg_line • "$label" "$detail" INFO)")
+        else infos+=("$(tg_line • "$label" "$detail" INFO)"); fi ;;
     esac
   done <"$1"
-  probs=("${fails[@]}" "${warns[@]}")   # FAIL lines first
 
-  local max="$SECURITY_TELEGRAM_MAX_LINES" more=0 reach_max=10 room
-  local nreach=${#reach[@]}
-  (( nreach > reach_max )) && { more=$((more + nreach - reach_max)); reach=("${reach[@]:0:reach_max}"); nreach=$reach_max; }
-  room=$(( max - nreach - (okn > 0 ? 1 : 0) - 1 ))
-  (( room < 3 )) && room=3
-  if (( ${#probs[@]} > room )); then more=$((more + ${#probs[@]} - room)); probs=("${probs[@]:0:room}"); fi
-  room=$(( max - nreach - ${#probs[@]} - (okn > 0 ? 1 : 0) - 1 ))
-  (( room > SECURITY_TELEGRAM_MAX_INFO )) && room=$SECURITY_TELEGRAM_MAX_INFO
-  (( room < 0 )) && room=0
-  if (( ${#infos[@]} > room )); then more=$((more + ${#infos[@]} - room)); infos=("${infos[@]:0:room}"); fi
-
-  # Character budget: drop INFO lines first, then the OK summary, then problems; keep the reach block.
-  local body text okline=""
-  (( okn > 0 )) && okline="✅ $okn checks OK"
+  local budget=$SECURITY_TELEGRAM_BUDGET more=0 out
+  if (( ${#infos[@]} > SECURITY_TELEGRAM_MAX_INFO )); then
+    more=$(( ${#infos[@]} - SECURITY_TELEGRAM_MAX_INFO )); infos=("${infos[@]:0:SECURITY_TELEGRAM_MAX_INFO}")
+  fi
   while :; do
-    body="<b>Security:</b>"
-    local x
-    for x in "${probs[@]}"; do body+=$'\n'"$x"; done
+    out=""
+    for x in "${fails[@]}" "${warns[@]}" "${oks[@]}"; do out+="CHECK|$x"$'\n'; done
     if (( ${#reach[@]} > 0 )); then
-      body+=$'\n'"<i>Reachable from the internet:</i>"
-      for x in "${reach[@]}"; do body+=$'\n'"$x"; done
+      out+="INFO|<i>Reachable from the internet</i>"$'\n'
+      for x in "${reach[@]}"; do out+="INFO|$x"$'\n'; done
     fi
-    [[ -n "$okline" ]] && body+=$'\n'"$okline"
-    for x in "${infos[@]}"; do body+=$'\n'"$x"; done
-    text="$body"
-    (( more > 0 )) && text+=$'\n'"… +$more more (see logs/host_security.log)"
-    if (( $(blen "$text") <= SECURITY_TELEGRAM_BUDGET )); then break; fi
+    for x in "${infos[@]}"; do out+="INFO|$x"$'\n'; done
+    (( more > 0 )) && out+="INFO|… +$more more (logs/host_security.log)"$'\n'
+    (( $(blen "$out") <= budget )) && break
     if (( ${#infos[@]} > 0 )); then infos=("${infos[@]:0:${#infos[@]}-1}"); more=$((more + 1))
-    elif [[ -n "$okline" ]]; then okline=""
-    elif (( ${#probs[@]} > 1 )); then probs=("${probs[@]:0:${#probs[@]}-1}"); more=$((more + 1))
-    elif (( ${#reach[@]} > 1 )); then reach=("${reach[@]:0:${#reach[@]}-1}"); more=$((more + 1))
-    else text=$(trunc "$text" "$SECURITY_TELEGRAM_BUDGET"); break
+    elif (( ${#reach[@]} > 0 )); then reach=("${reach[@]:0:${#reach[@]}-1}"); more=$((more + 1))
+    elif (( ${#oks[@]} > 0 )); then oks=("${oks[@]:0:${#oks[@]}-1}"); more=$((more + 1))
+    else break
     fi
   done
-  printf '%s\n' "$text"
+  printf '%s' "$out"
   printf 'ISSUES=%d\n' "$issues"
 }
 

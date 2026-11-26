@@ -46,29 +46,38 @@ STATUS|label|detail
 - One finding per line.
 - A label that starts with `reachable:` goes into the "Reachable from the internet" block.
 
-## Reading the Telegram section
+## Reading the Telegram report
+
+The daily report has two groups, with a gap between them:
 
 ```text
-<b>Security:</b>
-🔴 tailscale:netfilter: tailscale default netfilter mode: ...   FAIL lines first
-⚠️ persistence: since last run: added: unit:foo.service          then WARN lines
-Reachable from the internet:
-🌐 ssh: tcp/222 open to the internet; key-only, root login off, AllowUsers: adminroot
-🌐 public: also open (expected): udp/41641
-🌐 listeners: on all interfaces, UFW blocks public: tcp/8317, tcp/20241
-🌐 tailnet: not public: UFW on tailscale0 tcp/3773, tcp/8317; serve tcp/3773 → 127.0.0.1:3773
-🌐 tunnel: cliproxy.example.com → http://localhost:8317 (4 connections)
-✅ 12 checks OK                                                  all OK lines, collapsed
-ℹ️ ssh:logins: 24 h: adminroot from 203.0.113.7 (public) 08:02–09:31, key "laptop"   a few INFO lines
-… +3 more (see logs/host_security.log)
+📊 my-vps — Daily Status
+⚡ 2 need attention                       (or: ✅ All checks passed)
+
+⚠️ Open port: tcp/22 is open to the internet     problems first: ❌ FAIL, then ⚠️ WARN
+⚠️ Backup: cliproxy: no backup yet
+✅ Disk: 8% of 403 GB (limit 85%)                 then every check that passed, one ✅ each
+✅ Firewall: ufw active, default deny incoming
+✅ Cloudflare Access: cliproxy.example.com is protected
+✅ SSH: root login no, password auth off
+
+
+Details                                            informational only, no pass/fail
+Reachable from the internet
+• ssh: tcp/222 open to the internet; key-only, root login off
+• tunnel: cliproxy.example.com → http://localhost:8317 (4 connections)
+• Logins (24 h): adminroot from 203.0.113.7 (public) 08:02–09:31, key "laptop"
+⏱ Uptime: 4 days, 12 hours
 ```
 
-- 🔴 = FAIL, ⚠️ = WARN, ℹ️ = INFO, 🌐 = INFO in the reachability block.
-- The section has at most 25 lines and at most 8 INFO lines. A detail longer than 160 characters is cut.
-- Telegram allows 4096 characters per message. When the report is too long, INFO lines go
-  first. The reachability block and the WARN/FAIL lines stay.
-- If the script crashes or takes longer than 60 s, the report says
-  `⚠️ Security checks failed to run` and counts 1 issue. The report is always sent.
+- Every pass/fail check (host health and security) is a line in the first group. Anything that
+  needs no decision (what is reachable, logins, baselines) is in Details.
+- At most 8 detail lines besides the reachability block (`SECURITY_TELEGRAM_MAX_INFO`). A detail
+  longer than 200 characters is cut.
+- Telegram allows 4096 characters per message. When the report is too long, detail lines go first,
+  then the reachability block, then ✅ lines. Problems are never dropped.
+- If the security script crashes or takes longer than 60 s, the report shows
+  `⚠️ Security checks failed to run` among the problems. The report is always sent.
 
 ## The checks
 
@@ -253,7 +262,6 @@ A number knob with a bad value stops the script with exit 2 and a clear message,
 | `SECURITY_CLOUDFLARED_LOG_LINES` | 5000 | log lines searched |
 | `SECURITY_TUNNEL_DOMAINS` | (none) | static hostname list when the logs show none |
 | `SECURITY_EXPECT_DOMAINS` | (none) | expected tunnel hostnames (WARN on missing or extra) |
-| `SECURITY_TELEGRAM_MAX_LINES` | 25 | section line cap |
 | `SECURITY_TELEGRAM_MAX_INFO` | 8 | INFO line cap |
 | `SECURITY_TELEGRAM_BUDGET` | 3000 | section character cap (the alerter passes what is left of 3900) |
 | `SECURITY_STATE_DIR` | `$STATE_DIR/host-health` | where baselines live |

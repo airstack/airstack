@@ -184,9 +184,9 @@ describe('host_security.sh', () => {
   // --- Telegram rendering ---------------------------------------------------------
 
   describe('--telegram', () => {
-    it('escapes HTML, uses emoji, collapses OK lines and ends with ISSUES=<n>', () => {
+    it('tags CHECK lines (problems first, then ✅ each) and INFO details; escapes HTML; ends with ISSUES=<n>', () => {
       check('x.sh', [
-        'echo "OK|a|1"', 'echo "OK|b|2"', 'echo "OK|c|3"',
+        'echo "OK|firewall|ufw active"', 'echo "OK|access|a.example.com: behind Cloudflare Access"',
         'echo "WARN|web <b>&|bad & <script>"',
         'echo "FAIL|root|uid 0 > 1"',
         'echo "INFO|note|a & b"',
@@ -195,41 +195,43 @@ describe('host_security.sh', () => {
       const r = custom({}, ['--telegram'])
       expect(r.code).toBe(0)
       const l = lines(r.out)
-      expect(l[0]).toBe('<b>Security:</b>')
-      expect(l[1]).toBe('🔴 root: uid 0 &gt; 1') // FAIL first
-      expect(l[2]).toBe('⚠️ web &lt;b&gt;&amp;: bad &amp; &lt;script&gt;')
-      expect(l).toContain('<i>Reachable from the internet:</i>')
-      expect(l).toContain('🌐 ssh: tcp/222 open')
-      expect(l).toContain('✅ 3 checks OK')
-      expect(l).toContain('ℹ️ note: a &amp; b')
+      expect(l[0]).toBe('CHECK|❌ root: uid 0 &gt; 1') // FAIL first
+      expect(l[1]).toBe('CHECK|⚠️ web &lt;b&gt;&amp;: bad &amp; &lt;script&gt;')
+      expect(l).toContain('CHECK|✅ Firewall: ufw active') // plain-language titles, one ✅ per check
+      expect(l).toContain('CHECK|✅ Cloudflare Access: a.example.com: behind Cloudflare Access')
+      expect(l).toContain('INFO|<i>Reachable from the internet</i>')
+      expect(l).toContain('INFO|• ssh: tcp/222 open')
+      expect(l).toContain('INFO|• note: a &amp; b')
+      expect(l.findIndex((x) => x.startsWith('INFO|'))).toBeGreaterThan(l.findIndex((x) => x.startsWith('CHECK|✅')))
       expect(l[l.length - 1]).toBe('ISSUES=2')
       expect(r.out).not.toMatch(/<(?!\/?[bi]>)/) // only <b> and <i> tags survive
     })
 
-    it('caps lines and says how many were left out; truncates long details', () => {
+    it('never drops problems; truncates long details', () => {
       const body = Array.from({ length: 40 }, (_, i) => `echo "WARN|w${i}|${'x'.repeat(300)}"`).join('\n')
       check('x.sh', body)
       const l = lines(custom({}, ['--telegram']).out)
-      expect(l.length).toBeLessThanOrEqual(25 + 2)
+      expect(l.filter((x) => x.startsWith('CHECK|⚠️')).length).toBe(40)
       expect(l[l.length - 1]).toBe('ISSUES=40')
-      expect(l[l.length - 2]).toMatch(/^… \+\d+ more \(see logs\/host_security\.log\)$/)
-      expect(l[1].length).toBeLessThan(200)
-      expect(l[1].endsWith('…')).toBe(true)
+      expect(l[0].length).toBeLessThan(260)
+      expect(l[0].endsWith('…')).toBe(true)
     })
 
-    it('limits INFO lines and drops INFO before reach and problem lines when over budget', () => {
+    it('limits INFO lines; over budget drops INFO, then reach, then ✅, never problems', () => {
       const body = [
         ...Array.from({ length: 20 }, (_, i) => `echo "INFO|i${i}|${'y'.repeat(100)}"`),
         'echo "WARN|keep|me"',
+        'echo "OK|firewall|fine"',
         'echo "INFO|reachable:tunnel|a.example.com → http://localhost:1"',
       ].join('\n')
       check('x.sh', body)
       const full = lines(custom({}, ['--telegram']).out)
-      expect(full.filter(x => x.startsWith('ℹ️')).length).toBe(8)
-      const tight = custom({ SECURITY_TELEGRAM_BUDGET: '400' }, ['--telegram']).out
-      expect(Buffer.byteLength(tight.replace(/\nISSUES=\d+\n$/, ''))).toBeLessThanOrEqual(400)
-      expect(tight).toContain('⚠️ keep: me')
-      expect(tight).toContain('🌐 tunnel: a.example.com')
+      expect(full.filter((x) => /^INFO\|• i\d+/.test(x)).length).toBe(8)
+      expect(full).toContain('INFO|… +12 more (logs/host_security.log)')
+      const tight = custom({ SECURITY_TELEGRAM_BUDGET: '300' }, ['--telegram']).out
+      expect(Buffer.byteLength(tight.replace(/ISSUES=\d+\n$/, ''))).toBeLessThanOrEqual(300)
+      expect(tight).toContain('CHECK|⚠️ keep: me')
+      expect(tight).toContain('CHECK|✅ Firewall: fine')
       expect(tight).toMatch(/ISSUES=1\n$/)
     })
 
@@ -279,11 +281,11 @@ describe('host_security.sh', () => {
       expect(r.out).toContain('INFO|reachable:tailnet|not public: UFW on tailscale0 tcp/3773, tcp/8317; serve tcp/3773 → 127.0.0.1:3773')
       expect(r.out).toContain('INFO|reachable:tunnel|cliproxy.example.com → http://localhost:8317 (4 connections)')
       expect(r.out).not.toContain('old.example.com') // only the latest config line counts
-      expect(r.out).toContain('OK|cloudflared|tunnel ready, 4 connections')
+      expect(r.out).toContain('OK|cloudflared|connected, 4 connections')
       expect(r.out).toContain('INFO|docker|host network (sees all host interfaces): my-vps-usage-server, my-vps-cli-proxy-api, my-vps-cloudflared')
       expect(r.out).toContain('INFO|ssh:sessions|1 open: adminroot from 198.51.100.20 (public, 2h01m)')
-      expect(r.out).toContain('INFO|ssh:logins|24 h: adminroot from 198.51.100.20 (public) 00:14–07:45, key "laptop key"')
-      expect(r.out).toContain('INFO|accounts:sudo|NOPASSWD sudo: adminroot (ALL), deployuser (limited)')
+      expect(r.out).toContain('INFO|ssh:logins|adminroot from 198.51.100.20 (public) 00:14–07:45, key "laptop key"')
+      expect(r.out).toContain('INFO|accounts:sudo|adminroot (ALL), deployuser (limited)')
       expect(r.out).toContain('INFO|persistence|baseline created')
       expect(r.out).toContain('OK|processes|')
       expect(r.out).toContain('OK|updates|unattended-upgrades enabled')
@@ -423,8 +425,8 @@ describe('host_security.sh', () => {
           access_probe: `https://app.example.com/\t302\t${ACCESS}\t0\nhttps://app.example.com/admin/\t403\t\t1\n`,
         })
         expect(accessLines(builtin({}, ['--access']).out)).toEqual([
-          'OK|access|app.example.com: behind Cloudflare Access',
-          'OK|access|app.example.com/admin/: behind Cloudflare Access',
+          'OK|access|app.example.com is protected',
+          'OK|access|app.example.com/admin/ is protected',
         ])
       })
 
@@ -469,7 +471,7 @@ describe('host_security.sh', () => {
         fixture({ cloudflared_config: CF_CONFIG([{ hostname: 'app.example.com', service: 'http://x' }]), access_probe: `https://app.example.com/\t302\t${ACCESS}\t0\n` })
         const only = builtin({}, ['--access']).out.trim().split('\n')
         expect(only.every((l) => l.includes('|access|'))).toBe(true)
-        expect(builtin().out).toContain('OK|access|app.example.com: behind Cloudflare Access')
+        expect(builtin().out).toContain('OK|access|app.example.com is protected')
       })
     })
 
@@ -487,7 +489,7 @@ describe('host_security.sh', () => {
       const out = builtin({ SECURITY_DOCKER_USERS: 'stackroot deployuser' }).out
       expect(out).toContain('FAIL|accounts|uid 0 accounts besides root: toor')
       expect(out).toContain("WARN|accounts:docker|docker group is 'stackroot', expected 'deployuser stackroot'")
-      expect(builtin({ SECURITY_DOCKER_USERS: 'stackroot' }).out).toContain('OK|accounts:docker|docker group = stackroot')
+      expect(builtin({ SECURITY_DOCKER_USERS: 'stackroot' }).out).toContain('OK|accounts:docker|stackroot')
     })
 
     it('persistence: baseline, then one WARN naming changed items, then quiet', () => {
@@ -628,7 +630,7 @@ describe('host_security.sh', () => {
       const real = readFileSync(SCRIPT, 'utf-8')
       check('x.sh', 'echo "WARN|thing|a & b"')
       const r = section(`export SECURITY_BUILTIN=false SECURITY_DIR="${secd}"\n${real}`)
-      expect(r).toEqual({ section: '<b>Security:</b>\n⚠️ thing: a &amp; b', issues: '1' })
+      expect(r).toEqual({ section: 'CHECK|⚠️ thing: a &amp; b', issues: '1' })
     })
 
     it('the 15-minute run samples outbound connections on exit, best effort', () => {
