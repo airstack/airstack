@@ -1,9 +1,15 @@
-  # ── Cloudflare Tunnel (per-stack sidecar) ─────────────────────
+  # ── Cloudflare Tunnel (machine sidecar) ───────────────────────
+  # Metrics (/ready, /config) are reachable on the HOST at 127.0.0.1:20241 only; the host security
+  # scan reads the live ingress rules from /config to check Cloudflare Access on every hostname.
   cloudflared:
     image: cloudflare/cloudflared:2026.10.7
     container_name: {{stack.projectName}}-cloudflared
     restart: unless-stopped
-    command: tunnel run
+{{#if stack.cloudflared.hostNetwork}}
+    command: tunnel --metrics 127.0.0.1:20241 run
+{{else}}
+    command: tunnel --metrics 0.0.0.0:20241 run
+{{/if}}
     environment:
       - TUNNEL_TOKEN={{stack.cloudflared.tunnelToken}}
 {{#if stack.cloudflared.hostNetwork}}
@@ -17,6 +23,8 @@
     networks:
       stack-net:
         ipv4_address: 10.200.0.100
+    ports:
+      - "127.0.0.1:20241:20241"   # metrics, host loopback only
 {{/if}}
     read_only: true
     security_opt: [no-new-privileges:true]

@@ -82,3 +82,33 @@ describe('cf-tunnel helpers', () => {
     })
   })
 })
+
+describe('cloudflare access config', () => {
+  it('defaults: required, refuse on deploy, alert on scan', async () => {
+    const { parseAccessConfig } = await import('../../../cli/plugins/cloudflare/index')
+    expect(parseAccessConfig(undefined)).toEqual({ required: true, exempt: [], onDeploy: 'refuse', onScan: 'alert' })
+  })
+
+  it('rejects unknown keys and bad values', async () => {
+    const { parseAccessConfig } = await import('../../../cli/plugins/cloudflare/index')
+    expect(() => parseAccessConfig({ requird: true })).toThrow(/access\.requird: unknown key/)
+    expect(() => parseAccessConfig({ onScan: 'kill' })).toThrow(/onScan must be alert or stop/)
+    expect(() => parseAccessConfig({ exempt: 'hooks.example.com' })).toThrow(/exempt must be a list/)
+    expect(() => parseAccessConfig({ required: 'yes' })).toThrow(/required must be true or false/)
+  })
+
+  it('writes the settings into the machine manifest at pre-stage', async () => {
+    const { register } = await import('../../../cli/plugins/cloudflare/index')
+    const plugin = register({ access: { exempt: ['hooks.example.com', 'app.example.com/webhook'], onScan: 'stop' } })
+    const ctx: any = { config: { stack: { projectName: 'airstack' } }, manifest: { entries: {} } }
+    await plugin.hooks!['pre-stage']!(ctx, {})
+    expect(ctx.manifest.entries).toEqual({
+      CF_CONTAINER: 'airstack-cloudflared',
+      CF_METRICS: '127.0.0.1:20241',
+      CF_ACCESS_REQUIRED: 'true',
+      CF_ACCESS_EXEMPT: 'hooks.example.com app.example.com/webhook',
+      CF_ACCESS_ON_DEPLOY: 'refuse',
+      CF_ACCESS_ON_SCAN: 'stop',
+    })
+  })
+})

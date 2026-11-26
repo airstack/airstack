@@ -82,7 +82,8 @@ Disable a check with `SECURITY_SKIP="name ..."`.
 | `tailscale` | If `tailscale` and `tailscale0` exist: `iptables -C INPUT -j ts-input` (and ip6tables). If that rule exists, tailscale is in its default netfilter mode and all tailnet traffic skips UFW. Also `BackendState` and this node's tags. | FAIL on divert ("run `tailscale set --netfilter-mode=nodivert`"). WARN if not Running. |
 | `reachability` | Builds the "Reachable from the internet" block. Public ports = UFW allow rows without `on <iface>`, from Anywhere (v4/v6 merged). It compares them to `SECURITY_PUBLIC_PORTS`. It lists TCP sockets on all interfaces (`ss -tlnH`), ignoring loopback, tailnet addresses (`100.64.0.0/10`, `fd7a:`, `%tailscale0`) and private addresses. It lists UFW rules on `tailscale0` and `tailscale serve` TCP forwards as **tailnet only**. | WARN `reachable:unexpected` for a public port that is not expected (it says whether something listens behind it). WARN for a tailscale funnel. FAIL if UFW allows all ports. UDP listeners never WARN by themselves. |
 | `docker` | For each daemon in `SECURITY_DOCKER_HOSTS`: ports published on `0.0.0.0`/`::` (Docker bypasses UFW), `--privileged`, host PID namespace, a mounted Docker socket. Host-network containers are listed. | WARN for each risky setting. A public publish shows as `reachable:docker`. INFO for host network (silence with `SECURITY_HOSTNET_OK`). |
-| `tunnel` | Cloudflare tunnel hostnames. A remotely managed `cloudflared` logs `Updated to new configuration config="{...ingress...}"` when it connects. The check reads the last such line from the logs of containers that match `SECURITY_CLOUDFLARED_CONTAINERS` (or `journalctl -u cloudflared`). It prints `hostname → service` pairs only, never tokens. | INFO per hostname. WARN for a hostname missing from, or extra to, `SECURITY_EXPECT_DOMAINS`. |
+| `tunnel` | Cloudflare tunnel hostnames, from cloudflared's live config (`http://127.0.0.1:20241/config`); falls back to the last `Updated to new configuration` log line of containers that match `SECURITY_CLOUDFLARED_CONTAINERS` (or `journalctl -u cloudflared`). It prints `hostname → service` pairs only, never tokens. | INFO per hostname. WARN for a hostname missing from, or extra to, `SECURITY_EXPECT_DOMAINS`. |
+| `access` | Cloudflare Access on every public tunnel route ([details](#cloudflare-access-guard)). One unauthenticated HTTPS request per route (path rules probe their literal prefix), redirects not followed. Runs in the daily report and in the 15-minute alerter. | OK when it redirects to `*.cloudflareaccess.com/cdn-cgi/access/login` (or Access's 403). FAIL when the origin answers without Access and `access.required` is on. WARN when it cannot tell (timeout, DNS, Cloudflare 5xx). INFO for `access.exempt` routes. |
 | `cloudflared` | `http://127.0.0.1:20241/ready` (`readyConnections`). | FAIL at 0. WARN below `SECURITY_CLOUDFLARED_MIN_CONNECTIONS`. INFO when there are no metrics (not every stack has a tunnel). |
 | `ssh` | `sshd -T`: `PermitRootLogin` must be `no`/`prohibit-password`, `PasswordAuthentication no`. Failed logins in the last 24 h, counted per connection (source IP + port), not per log line: sshd writes several lines per attempt. Then the top 3 source IPs and the usernames tried. | FAIL for root login or passwords. WARN for keyboard-interactive auth. WARN above `SECURITY_SSH_FAIL_WARN` failed logins. |
 | `sshsources` | Open SSH sessions now (user, source IP, how long, tailnet or public). Accepted logins in 24 h, one entry per user + source + key: the time window (first–last) and the key, named by its comment in that user's `authorized_keys` ("NOT in authorized_keys now" if it was removed since). No counts: deploy tools open a new connection per command. A baseline of known source IPs. | WARN once for a login from an IP never seen before. |
@@ -93,6 +94,39 @@ Disable a check with `SECURITY_SKIP="name ..."`.
 | `processes` | Processes whose `/proc/<pid>/exe` is in `/dev/shm`, `/var/tmp`, or a hidden directory outside home directories (for example `/tmp/.x/`). Plain `/tmp` is fine (test binaries). Dot-dirs in homes (`~/.nvm`, `~/.local`) are fine. | WARN with pid and path (allow-list with `SECURITY_EXE_OK`). |
 | `updates` | `unattended-upgrades` enabled and `APT::Periodic::Unattended-Upgrade "1"`. The pending-update count stays in the Maintenance block. | WARN if off. |
 | `custom` | Your own checks (next section). | Whatever they print. |
+
+## Cloudflare Access guard
+
+Every public hostname on the machine's tunnel should sit behind Cloudflare Access. Configure it on
+the machine's cloudflare plugin:
+
+```yaml
+plugins:
+  airstack/cloudflare:
+    tunnelToken: ${CLOUDFLARE_TUNNEL_TOKEN}
+    access:
+      required: true        # default true: every public route must be behind Access
+      exempt:               # deliberately public routes (hostname or hostname/path)
+        - hooks.example.com
+      onDeploy: refuse      # refuse | warn (default refuse)  — enforcement: next step, not active yet
+      onScan: alert         # alert | stop  (default alert)   — stop: next step, not active yet
+```
+
+Deploy validates the block (`airstack fleet check` too) and writes it into the machine manifest
+(`/etc/airstack/stacks/airstack.env`: `CF_ACCESS_*`, `CF_CONTAINER`, `CF_METRICS`); the host scripts
+read it from there. cloudflared's metrics listen on `127.0.0.1:20241` only.
+
+How a route is judged (one request, no credentials, no redirect following):
+
+| Result | Meaning | Status |
+|---|---|---|
+| protected | 3xx to `https://<team>.cloudflareaccess.com/cdn-cgi/access/…`, or Access's 403 page | OK |
+| unprotected | the origin answered: 200, an app's 401/404, a redirect anywhere else | FAIL (INFO if exempt or `required: false`) |
+| unknown | no answer, DNS failure, Cloudflare or tunnel 5xx (502–504, 520–530) | WARN, never treated as public |
+
+The 15-minute `host_alerter` run checks too and alerts on a change (and on recovery), so a route
+that loses protection is reported within 15 minutes. `SECURITY_ACCESS_ALERTS=false` (cron env of
+`host_alerter`) turns that off.
 
 ## Your own checks (security.d)
 
@@ -197,7 +231,7 @@ A number knob with a bad value stops the script with exit 2 and a clear message,
 | `SECURITY_SCRIPT` | `{installDir}/plugins/cron/host-status/host_security.sh` | alerter: script path |
 | `SECURITY_SAMPLE` | `true` | alerter: 15-min run calls `--sample` |
 | `SECURITY_BUILTIN` | `true` | `false` = only custom checks |
-| `SECURITY_SKIP` | (none) | built-in checks to skip: `firewall tailscale reachability docker tunnel cloudflared ssh sshsources accounts persistence secrets outbound processes updates custom` |
+| `SECURITY_SKIP` | (none) | built-in checks to skip: `firewall tailscale reachability docker tunnel access cloudflared ssh sshsources accounts persistence secrets outbound processes updates custom` |
 | `SECURITY_DIR` | `{installDir}/security.d` | custom checks |
 | `SECURITY_CHECK_TIMEOUT` | 20 | seconds per custom check |
 | `SECURITY_PUBLIC_PORTS` | sshd ports (`sshd -T`, else 22) as `P/tcp`, plus `41641/udp` when tailscale is installed | ports allowed to be open to the internet: `222`, `222/tcp`, `41641/udp` |

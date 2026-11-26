@@ -239,6 +239,26 @@ security_sample() {
   fi
 }
 
+# Cloudflare Access guard for the 15-minute run: each FAIL/WARN line of `host_security.sh --access`
+# becomes an alert, so a route that loses Access protection alerts within 15 minutes (and recovers).
+# SECURITY_ACCESS_ALERTS=false turns it off. Best effort: never changes this script's exit status.
+access_alerts() {
+  [[ "${SECURITY_ACCESS_ALERTS:-true}" == true ]] || return 0
+  local script="${SECURITY_SCRIPT:-${INSTALL_DIR}/plugins/cron/host-status/host_security.sh}" out line
+  [[ -f "$script" ]] || return 0
+  if command -v timeout >/dev/null 2>&1; then
+    out=$(timeout -k 2 60 bash "$script" --access 2>/dev/null) || true
+  else
+    out=$(bash "$script" --access 2>/dev/null) || true
+  fi
+  while IFS= read -r line; do
+    case "$line" in
+      FAIL\|access\|*) alerts+=("Cloudflare Access: ${line#FAIL|access|}") ;;
+      WARN\|access\|*) alerts+=("Cloudflare Access (unverified): ${line#WARN|access|}") ;;
+    esac
+  done <<<"$out"
+}
+
 # --- Telegram config ---
 TELEGRAM_CONFIGURED=false
 if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
@@ -413,6 +433,7 @@ fi
 # Outbound sampler runs on exit (after the alert work), whatever path the script exits by.
 trap 'security_sample' EXIT
 if ! $TELEGRAM_CONFIGURED; then exit 0; fi
+access_alerts
 
 current_state=$(printf '%s\n' "${alerts[@]}" 2>/dev/null | sort | md5sum | cut -d' ' -f1)
 previous_state=$(cat "$STATE_FILE" 2>/dev/null || echo "none")

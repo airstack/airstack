@@ -10,6 +10,7 @@
 #   host_security.sh              Run all checks; print raw lines STATUS|label|detail
 #   host_security.sh --telegram   Print the Telegram-HTML "Security" section; last line is ISSUES=<n>
 #   host_security.sh --sample     Record current outbound TCP destinations (fast; for the 15-min cron)
+#   host_security.sh --access     Only the Cloudflare Access check (raw lines; the 15-min alerter uses it)
 #   host_security.sh --help
 #
 # Output protocol: one finding per line, STATUS|label|detail, STATUS is OK, WARN, FAIL or INFO.
@@ -19,7 +20,7 @@
 # Knobs (environment; cron `env:` of host_alerter_report in stack.yml). Defaults in brackets.
 #   SECURITY_BUILTIN=true                 [true]  false = run only the custom security.d checks
 #   SECURITY_SKIP="..."                   []      space list of built-in checks to skip:
-#        firewall tailscale reachability docker tunnel cloudflared ssh sshsources
+#        firewall tailscale reachability docker tunnel access cloudflared ssh sshsources
 #        accounts persistence secrets outbound processes updates custom
 #   SECURITY_DIR=...                      [$INSTALL_DIR/security.d]  custom check scripts (*.sh, executable)
 #   SECURITY_CHECK_TIMEOUT=20             [20]    seconds per custom check
@@ -63,6 +64,7 @@ for arg in "$@"; do
   case "$arg" in
     --telegram) MODE=telegram ;;
     --sample) MODE=sample ;;
+    --access) MODE=access ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
   esac
@@ -102,7 +104,7 @@ CRON_DIR="${SECURITY_CRON_DIR:-/etc/cron.d}"
 MANIFEST_DIR="${STACKS_MANIFEST_DIR:-/etc/airstack/stacks}"
 NOW="${SECURITY_NOW:-$(date +%s)}"
 
-ALL_CHECKS="firewall tailscale reachability docker tunnel cloudflared ssh sshsources accounts persistence secrets outbound processes updates"
+ALL_CHECKS="firewall tailscale reachability docker tunnel access cloudflared ssh sshsources accounts persistence secrets outbound processes updates"
 
 # --- Knob validation (a typo must fail loudly, not silently weaken a check) ---
 die() { echo "host_security: ERROR: $*" >&2; exit 2; }
@@ -579,12 +581,51 @@ cf_parse_ingress() {
     $2 == "service" { if (h != "") print h "\t" $4; h = "" }'
 }
 
+# Live ingress from cloudflared's metrics server (/config): "hostname<TAB>path<TAB>service" per rule
+# with a hostname. Empty output + rc 1 when the endpoint cannot be read.
+cf_metrics_addr() {
+  local m
+  m=$(cf_manifest_value CF_METRICS)
+  printf '%s' "${m:-127.0.0.1:${SECURITY_CLOUDFLARED_METRICS_PORT}}"
+}
+cf_live_ingress() {
+  local js
+  js=$(cached cloudflared_config 5 curl -s -m 3 "http://$(cf_metrics_addr)/config") || return 1
+  [[ "$js" == *'"ingress"'* ]] || return 1
+  # Each rule lists hostname, path, service in that order; catch-all rules have an empty hostname.
+  grep -oE '"(hostname|path|service)": *(null|"[^"]*")' <<<"$js" | awk '
+    { match($0, /^"[a-z]+"/); key = substr($0, 2, RLENGTH - 2)
+      val = $0; sub(/^"[a-z]+": */, "", val)
+      if (val == "null") val = ""; else { sub(/^"/, "", val); sub(/"$/, "", val) } }
+    key == "hostname" { h = val; p = ""; next }
+    key == "path" { p = val; next }
+    key == "service" { if (h != "") print h "\t" (p == "" ? "-" : p) "\t" val; h = ""; p = "" }'
+}
+# Ingress as "hostname<TAB>path<TAB>service": live /config first, then the last config log line.
+cf_ingress() {
+  local live
+  if live=$(cf_live_ingress) && [[ -n "$live" ]]; then printf '%s\n' "$live"; return 0; fi
+  cf_config_line | cf_parse_ingress | awk -F'\t' '{ print $1 "\t-\t" $2 }'
+}
+# A key from the manifest that carries the cloudflare plugin settings (the machine unit's).
+cf_manifest_value() {  # KEY
+  local m v
+  for m in "$MANIFEST_DIR"/*.env; do
+    [[ -f "$m" ]] || continue
+    grep -q '^CF_CONTAINER=' "$m" 2>/dev/null || continue
+    v=$({ grep "^$1=" "$m" 2>/dev/null || true; } | head -1 | cut -d= -f2-)
+    printf '%s' "$v"
+    return 0
+  done
+  return 1
+}
+
 check_tunnel() {
   local line pairs h s n count_note="" seen=""
   line=$(cf_config_line)
   n=$(cf_ready_count)
   [[ -n "$n" ]] && count_note=" ($n connections)"
-  pairs=$(printf '%s\n' "$line" | cf_parse_ingress)
+  pairs=$(cf_ingress | awk -F'\t' '{ print $1 ($2 == "-" ? "" : " path " $2) "\t" $3 }')
   if [[ -n "$pairs" ]]; then
     while IFS=$'\t' read -r h s; do
       [[ -n "$h" ]] || continue
@@ -600,6 +641,83 @@ check_tunnel() {
     for h in $SECURITY_EXPECT_DOMAINS; do in_list "$h" "$seen" || emit WARN reachable:tunnel "expected hostname $h is not in the tunnel config"; done
     for h in $seen; do in_list "$h" "$SECURITY_EXPECT_DOMAINS" || emit WARN reachable:tunnel "unexpected tunnel hostname $h"; done
   fi
+  return 0
+}
+
+# --- Cloudflare Access guard -------------------------------------------------
+# For every public tunnel route: is it behind Cloudflare Access? One unauthenticated HTTPS request
+# per route, redirects not followed. Settings come from the machine manifest (CF_ACCESS_*):
+#   protected    3xx to https://<team>.cloudflareaccess.com/cdn-cgi/access/login…, or Access's 403
+#   unknown      no answer, DNS failure, or a Cloudflare/tunnel 5xx (502-504, 520-530): never "public"
+#   unprotected  anything else (the origin answered: 200, an app 401/404, a redirect elsewhere, …)
+
+# Literal path prefix to probe for a cloudflared path rule (a regex): "^/admin/.*" -> /admin/
+access_probe_path() {
+  local p="$1"
+  [[ -n "$p" && "$p" != - ]] || { printf '/'; return 0; }
+  p="${p#^}"; p="${p#/}"
+  p=$(printf '%s' "$p" | sed -E 's/[].*+?()[{|\\$].*//')
+  printf '/%s' "$p"
+}
+# URL -> "code<TAB>redirect<TAB>access403(0|1)". Fixture mode: lines "URL<TAB>code<TAB>redirect<TAB>0|1" in $FIX/access_probe.
+access_probe() {
+  local url="$1" body code redirect a403=0 out
+  if [[ -n "$FIX" ]]; then
+    out=$(awk -F'\t' -v u="$url" '$1 == u { print $2 "\t" ($3 == "" ? "-" : $3) "\t" ($4 == "" ? 0 : $4); exit }' "$FIX/access_probe" 2>/dev/null)
+    printf '%s\n' "${out:-000	-	0}"
+    return 0
+  fi
+  command -v curl >/dev/null 2>&1 || { printf '000\t-\t0\n'; return 0; }
+  body="$WORK/access.body"
+  out=$(curl -s -o "$body" -w '%{http_code}\t%{redirect_url}' --max-time 10 -A 'airstack-access-check' "$url" 2>/dev/null) || true
+  code="${out%%$'\t'*}"; redirect="${out#*$'\t'}"
+  [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
+  if [[ "$code" == 403 ]] && head -c 65536 "$body" 2>/dev/null | grep -qiE 'cloudflareaccess\.com|Cloudflare Access'; then a403=1; fi
+  printf '%s\t%s\t%s\n' "$code" "${redirect:--}" "$a403"
+}
+access_classify() {  # CODE REDIRECT A403 -> protected|unknown|unprotected
+  local code="$1" redirect="$2" a403="$3"
+  case "$code" in
+    301|302|303|307|308) [[ "$redirect" =~ ^https://[A-Za-z0-9-]+\.cloudflareaccess\.com/cdn-cgi/access/ ]] && { echo protected; return; } ;;
+    403) [[ "$a403" == 1 ]] && { echo protected; return; } ;;
+    000|502|503|504|52[0-9]|530) echo unknown; return ;;
+  esac
+  echo unprotected
+}
+
+check_access() {
+  local required exempt on_scan rules h p s path url probe code redirect a403 state label n=0 e is_exempt
+  required=$(cf_manifest_value CF_ACCESS_REQUIRED) || return 0   # no cloudflare plugin on this machine
+  required="${required:-true}"
+  exempt=$(cf_manifest_value CF_ACCESS_EXEMPT)
+  on_scan=$(cf_manifest_value CF_ACCESS_ON_SCAN); on_scan="${on_scan:-alert}"
+  if ! rules=$(cf_live_ingress); then
+    emit WARN access "cannot read the tunnel routes (cloudflared metrics on $(cf_metrics_addr) not reachable)"
+    return 0
+  fi
+  if [[ -z "$rules" ]]; then emit INFO access "no public hostnames on the tunnel"; return 0; fi
+  while IFS=$'\t' read -r h p s; do
+    [[ -n "$h" ]] || continue
+    n=$((n + 1))
+    path=$(access_probe_path "$p")
+    url="https://${h}${path}"
+    label="${h}$([[ "$path" == / ]] || printf '%s' "$path")"
+    IFS=$'\t' read -r code redirect a403 <<<"$(access_probe "$url")"
+    state=$(access_classify "$code" "$redirect" "$a403")
+    is_exempt=false
+    for e in $exempt; do
+      if [[ "$e" == "$h" || "$e" == "$h$path" || "$e" == "${h}${path%/}" ]]; then is_exempt=true; fi
+    done
+    case "$state" in
+      protected) emit OK access "$label: behind Cloudflare Access" ;;
+      unknown) emit WARN access "$label: could not verify Cloudflare Access (HTTP $code)" ;;
+      unprotected)
+        if $is_exempt; then emit INFO access "$label: public by config (access.exempt), HTTP $code"
+        elif [[ "$required" == true ]]; then emit FAIL access "$label: PUBLIC, reachable without Cloudflare Access (HTTP $code → $s; onScan: $on_scan)"
+        else emit INFO access "$label: public, not behind Cloudflare Access (access.required is false), HTTP $code"; fi ;;
+    esac
+  done <<<"$rules"
+  (( n > 0 )) || emit INFO access "no public hostnames on the tunnel"
   return 0
 }
 
@@ -1193,6 +1311,10 @@ trap 'rm -rf "$WORK"' EXIT
 
 if [[ "$MODE" == sample ]]; then
   sample_outbound >/dev/null 2>&1
+  exit 0
+fi
+if [[ "$MODE" == access ]]; then
+  skipped access || check_access
   exit 0
 fi
 

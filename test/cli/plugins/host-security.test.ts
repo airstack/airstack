@@ -400,6 +400,79 @@ describe('host_security.sh', () => {
       expect(out).toMatch(/INFO\|ssh:failures\|top sources: 203\.0\.113\.5 ×1 \(public\), 203\.0\.113\.6 ×1 \(public\); users tried: admin, root/)
     })
 
+    describe('cloudflare access guard', () => {
+      const CF_CONFIG = (rules: { hostname?: string; path?: string | null; service: string }[]) =>
+        JSON.stringify({ version: 3, config: { ingress: rules.map((r) => ({ hostname: r.hostname ?? '', path: r.path ?? null, service: r.service, originRequest: { connectTimeout: 30 } })) } })
+      const manifest = (extra: Record<string, string> = {}) => {
+        mkdirSync(join(root, 'stacks'), { recursive: true })
+        const vals = { CF_CONTAINER: 'airstack-cloudflared', CF_METRICS: '127.0.0.1:20241', CF_ACCESS_REQUIRED: 'true', CF_ACCESS_EXEMPT: '', CF_ACCESS_ON_SCAN: 'alert', ...extra }
+        writeFileSync(join(root, 'stacks', 'airstack.env'), Object.entries(vals).map(([k, v]) => `${k}=${v}`).join('\n') + '\n')
+        writeFileSync(join(root, 'stacks', 'cliproxy.env'), 'PROJECT_NAME=cliproxy\nINSTALL_DIR=/srv/airstack/stacks/cliproxy\n')
+      }
+      const ACCESS = 'https://team.cloudflareaccess.com/cdn-cgi/access/login/app.example.com?kid=1'
+      const accessLines = (out: string) => out.split('\n').filter((l) => l.includes('|access|'))
+
+      it('OK when every route redirects to Cloudflare Access; probes the literal path prefix', () => {
+        manifest()
+        fixture({
+          cloudflared_config: CF_CONFIG([
+            { hostname: 'app.example.com', service: 'http://localhost:8317' },
+            { hostname: 'app.example.com', path: '^/admin/.*', service: 'http://localhost:9000' },
+            { service: 'http_status:404' },
+          ]),
+          access_probe: `https://app.example.com/\t302\t${ACCESS}\t0\nhttps://app.example.com/admin/\t403\t\t1\n`,
+        })
+        expect(accessLines(builtin({}, ['--access']).out)).toEqual([
+          'OK|access|app.example.com: behind Cloudflare Access',
+          'OK|access|app.example.com/admin/: behind Cloudflare Access',
+        ])
+      })
+
+      it('FAIL for a public route; exempt routes are INFO; unknown is WARN, never FAIL', () => {
+        manifest({ CF_ACCESS_EXEMPT: 'hooks.example.com' })
+        fixture({
+          cloudflared_config: CF_CONFIG([
+            { hostname: 'open.example.com', service: 'http://localhost:8317' },
+            { hostname: 'hooks.example.com', service: 'http://localhost:7000' },
+            { hostname: 'down.example.com', service: 'http://localhost:7001' },
+            { hostname: 'elsewhere.example.com', service: 'http://localhost:7002' },
+          ]),
+          access_probe: [
+            'https://open.example.com/\t200\t\t0',
+            'https://hooks.example.com/\t200\t\t0',
+            'https://down.example.com/\t530\t\t0',
+            'https://elsewhere.example.com/\t302\thttps://login.example.com/\t0',
+          ].join('\n') + '\n',
+        })
+        const lines = accessLines(builtin({}, ['--access']).out)
+        expect(lines).toContain('FAIL|access|open.example.com: PUBLIC, reachable without Cloudflare Access (HTTP 200 → http://localhost:8317; onScan: alert)')
+        expect(lines).toContain('INFO|access|hooks.example.com: public by config (access.exempt), HTTP 200')
+        expect(lines).toContain('WARN|access|down.example.com: could not verify Cloudflare Access (HTTP 530)')
+        expect(lines.some((l) => l.startsWith('FAIL|access|elsewhere.example.com'))).toBe(true) // redirect not to Access
+      })
+
+      it('access.required false reports public routes as INFO', () => {
+        manifest({ CF_ACCESS_REQUIRED: 'false' })
+        fixture({ cloudflared_config: CF_CONFIG([{ hostname: 'open.example.com', service: 'http://x' }]), access_probe: 'https://open.example.com/\t200\t\t0\n' })
+        expect(accessLines(builtin({}, ['--access']).out)).toEqual(['INFO|access|open.example.com: public, not behind Cloudflare Access (access.required is false), HTTP 200'])
+      })
+
+      it('WARN when the routes cannot be read; silent when the machine has no cloudflare plugin', () => {
+        manifest()
+        expect(accessLines(builtin({}, ['--access']).out)).toEqual(['WARN|access|cannot read the tunnel routes (cloudflared metrics on 127.0.0.1:20241 not reachable)'])
+        rmSync(join(root, 'stacks', 'airstack.env'))
+        expect(accessLines(builtin({}, ['--access']).out)).toEqual([])
+      })
+
+      it('--access prints only access lines; the full run includes them', () => {
+        manifest()
+        fixture({ cloudflared_config: CF_CONFIG([{ hostname: 'app.example.com', service: 'http://x' }]), access_probe: `https://app.example.com/\t302\t${ACCESS}\t0\n` })
+        const only = builtin({}, ['--access']).out.trim().split('\n')
+        expect(only.every((l) => l.includes('|access|'))).toBe(true)
+        expect(builtin().out).toContain('OK|access|app.example.com: behind Cloudflare Access')
+      })
+    })
+
     it('ssh sources: learning first, then WARN once for a new IP', () => {
       builtin() // creates the baseline (learning)
       const later = String(NOW + 5 * DAY)
