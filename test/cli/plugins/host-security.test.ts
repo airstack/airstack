@@ -73,7 +73,8 @@ LISTEN 0 4096 *:20241 *:*
 `,
   tailscale_serve: '{\n  "TCP": {\n    "3773": {\n      "TCPForward": "127.0.0.1:3773"\n    }\n  }\n}\n',
   journal_ssh: 'Nov 25 00:14:09 testbox sshd-session[1]: Accepted publickey for adminroot from 198.51.100.20 port 55905 ssh2: ED25519 SHA256:x\n'
-    + 'Nov 25 00:14:11 testbox sshd-session[2]: Accepted publickey for adminroot from 198.51.100.20 port 55912 ssh2: ED25519 SHA256:x\n',
+    + 'Nov 25 07:45:11 testbox sshd-session[2]: Accepted publickey for adminroot from 198.51.100.20 port 55912 ssh2: ED25519 SHA256:x\n',
+  'authorized_fingerprints.adminroot': '256 SHA256:x laptop key (ED25519)\n',
   ss_ssh: '0 0 203.0.113.10:222 198.51.100.20:59282 users:(("sshd-session",pid=300,fd=9),("sshd-session",pid=301,fd=9))\n',
   ps: '300 root 7300\n301 adminroot 7290\n',
   passwd: 'root:x:0:0:root:/root:/bin/bash\nadminroot:x:1001:1001::/home/adminroot:/bin/bash\n',
@@ -281,7 +282,7 @@ describe('host_security.sh', () => {
       expect(r.out).toContain('OK|cloudflared|tunnel ready, 4 connections')
       expect(r.out).toContain('INFO|docker|host network (sees all host interfaces): my-vps-usage-server, my-vps-cli-proxy-api, my-vps-cloudflared')
       expect(r.out).toContain('INFO|ssh:sessions|1 open: adminroot from 198.51.100.20 (public, 2h01m)')
-      expect(r.out).toContain('INFO|ssh:logins|accepted in 24 h: adminroot@198.51.100.20 ×2 (public)')
+      expect(r.out).toContain('INFO|ssh:logins|24 h: adminroot from 198.51.100.20 (public) 00:14–07:45, key "laptop key"')
       expect(r.out).toContain('INFO|accounts:sudo|NOPASSWD sudo: adminroot (ALL), deployuser (limited)')
       expect(r.out).toContain('INFO|persistence|baseline created')
       expect(r.out).toContain('OK|processes|')
@@ -358,14 +359,45 @@ describe('host_security.sh', () => {
     it('ssh: bad config FAILs; failed-login pressure WARNs above the threshold', () => {
       fixture({
         sshd_T: 'port 22\npermitrootlogin yes\npasswordauthentication yes\n',
-        journal_ssh: Array.from({ length: 5 }, (_, i) => `Nov 25 x sshd[1]: Invalid user u${i} from 203.0.113.${i % 2} port 1`).join('\n') + '\n',
+        journal_ssh: Array.from({ length: 5 }, (_, i) => `Nov 25 x sshd[1]: Invalid user u${i} from 203.0.113.${i % 2} port ${1000 + i}`).join('\n') + '\n',
       })
       const out = builtin({ SECURITY_SSH_FAIL_WARN: '3' }).out
       expect(out).toContain("FAIL|ssh|PermitRootLogin is 'yes'")
       expect(out).toContain('FAIL|ssh|PasswordAuthentication is yes')
-      expect(out).toContain('WARN|ssh:failures|5 failed-auth log lines in 24 h (threshold 3)')
-      expect(out).toContain('INFO|ssh:failures|top sources: 203.0.113.0 (3), 203.0.113.1 (2)')
+      expect(out).toContain('WARN|ssh:failures|5 failed login(s) from 2 IP(s) in 24 h (threshold 3)')
+      expect(out).toContain('INFO|ssh:failures|top sources: 203.0.113.0 ×3 (public), 203.0.113.1 ×2 (public); users tried: u0, u1, u2, u3, u4')
       expect(out).toContain('INFO|reachable:ssh|sshd (tcp/22) is not open to the internet by UFW; PASSWORDS ALLOWED, root login yes')
+    })
+
+    it('ssh logins: one entry per user+source+key with a time window and the key comment, no counts', () => {
+      fixture({
+        journal_ssh: [
+          'Nov 25 09:00:01 h sshd-session[1]: Accepted publickey for adminroot from 198.51.100.20 port 1 ssh2: ED25519 SHA256:x',
+          ...Array.from({ length: 300 }, (_, i) => `Nov 25 09:${String(10 + Math.floor(i / 8)).padStart(2, '0')}:00 h sshd-session[2]: Accepted publickey for adminroot from 198.51.100.20 port ${2 + i} ssh2: ED25519 SHA256:x`),
+          'Nov 25 10:30:00 h sshd-session[3]: Accepted publickey for adminroot from 198.51.100.30 port 9 ssh2: ED25519 SHA256:removedkey123',
+          'Nov 25 11:00:00 h sshd-session[4]: Accepted publickey for deployuser from 192.168.1.5 port 9 ssh2: ED25519 SHA256:abcdefghijklmnop',
+        ].join('\n') + '\n',
+      })
+      const line = builtin().out.split('\n').find((l) => l.startsWith('INFO|ssh:logins|'))!
+      expect(line).not.toMatch(/×\d/)
+      expect(line).toContain('deployuser from 192.168.1.5 (private) at 11:00, key …ijklmnop') // no readable keys for deployuser
+      expect(line).toContain('adminroot from 198.51.100.30 (public) at 10:30, key …edkey123 (NOT in authorized_keys now)')
+      expect(line).toContain('adminroot from 198.51.100.20 (public) 09:00–09:47, key "laptop key"')
+      expect(line.indexOf('deployuser')).toBeLessThan(line.indexOf('198.51.100.20')) // newest first
+    })
+
+    it('ssh failures: several log lines of one attempt count once', () => {
+      fixture({
+        journal_ssh: [
+          'Nov 25 x sshd[1]: Invalid user admin from 203.0.113.5 port 4242',
+          'Nov 25 x sshd[1]: Failed password for invalid user admin from 203.0.113.5 port 4242 ssh2',
+          'Nov 25 x sshd[1]: Connection closed by invalid user admin 203.0.113.5 port 4242 [preauth]',
+          'Nov 25 x sshd[2]: Connection closed by authenticating user root 203.0.113.6 port 5000 [preauth]',
+        ].join('\n') + '\n',
+      })
+      const out = builtin().out
+      expect(out).toContain('OK|ssh:failures|2 failed login(s) from 2 IP(s) in 24 h')
+      expect(out).toMatch(/INFO\|ssh:failures\|top sources: 203\.0\.113\.5 ×1 \(public\), 203\.0\.113\.6 ×1 \(public\); users tried: admin, root/)
     })
 
     it('ssh sources: learning first, then WARN once for a new IP', () => {

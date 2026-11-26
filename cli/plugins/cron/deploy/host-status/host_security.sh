@@ -27,7 +27,7 @@
 #                                                 ports allowed to be open to the internet; "P", "P/tcp", "P/udp"
 #   SECURITY_DOCKER_HOSTS="unix://..."    [unix:///var/run/docker.sock]  add rootless sockets here
 #   SECURITY_HOSTNET_OK="name-glob ..."   []      host-network containers that are fine (silences the INFO)
-#   SECURITY_SSH_FAIL_WARN=200            [200]   WARN above this many failed-auth log lines in 24 h
+#   SECURITY_SSH_FAIL_WARN=200            [200]   WARN above this many failed logins (connections) in 24 h
 #   SECURITY_DOCKER_USERS="a b"           []      expected docker group members (unset = INFO list only)
 #   SECURITY_SUDO_USERS="a b"             []      expected NOPASSWD sudo users (unset = INFO list only)
 #   SECURITY_OUTBOUND_OK_PORTS="..."      [22 53 80 123 222 443 853 8443]
@@ -620,17 +620,60 @@ check_ssh() {
   j=$(journal_ssh); jrc=$?
   if (( jrc == 127 )); then return 0; fi
   if (( jrc != 0 )); then emit INFO ssh:failures "could not read the ssh journal"; return 0; fi
-  failed=$(grep -cE 'Failed password|Invalid user|Connection closed by authenticating user' <<<"$j")
-  if (( failed > SECURITY_SSH_FAIL_WARN )); then emit WARN ssh:failures "$failed failed-auth log lines in 24 h (threshold $SECURITY_SSH_FAIL_WARN)"
-  else emit OK ssh:failures "$failed failed-auth log lines in 24 h"; fi
-  if (( failed > 0 )); then
-    top=$(sed -nE 's/.*Failed password for (invalid user )?[^ ]+ from ([0-9a-fA-F.:]+) port.*/\2/p
-                   s/.*Invalid user .* from ([0-9a-fA-F.:]+)( port.*)?$/\1/p
-                   s/.*Connection closed by authenticating user [^ ]+ ([0-9a-fA-F.:]+) port.*/\1/p' <<<"$j" \
-          | sort | uniq -c | sort -rn | head -3 | awk '{ printf "%s%s (%s)", (NR > 1 ? ", " : ""), $2, $1 }')
-    [[ -n "$top" ]] && emit INFO ssh:failures "top sources: $top"
+  # One failed attempt = one TCP connection (source ip:port). sshd writes several lines per attempt
+  # (Invalid user, Failed password, Connection closed …), so counting lines overstates it.
+  # Output: line 1 "<connections> <ips>", then "ip<TAB>connections" (top first), then "users<TAB>u1 u2 …".
+  local stats conns nips top users
+  stats=$(awk '
+    /Failed (password|publickey)|Invalid user|Connection closed by authenticating user|Disconnected from (invalid|authenticating) user/ {
+      ip = ""; port = ""; u = ""
+      for (i = 1; i <= NF; i++) {
+        if ($i == "port" && i > 1) { ip = $(i - 1); port = $(i + 1) }
+        if ($i == "user" && i < NF) u = $(i + 1)
+        if ($i == "for" && $(i + 1) != "invalid" && u == "") u = $(i + 1)
+      }
+      if (ip == "") next
+      if (!((ip SUBSEP port) in seen)) { seen[ip, port] = 1; conns++; per[ip]++ }
+      if (u != "" && !(u in tried)) { tried[u] = 1; ulist = ulist (ulist == "" ? "" : " ") u }
+    }
+    END {
+      n = 0; for (ip in per) n++
+      print conns + 0, n
+      for (ip in per) print ip "\t" per[ip]
+      print "users\t" ulist
+    }' <<<"$j")
+  read -r conns nips <<<"$(head -1 <<<"$stats")"
+  if (( conns == 0 )); then
+    emit OK ssh:failures "no failed logins in 24 h"
+    return 0
   fi
+  local summary="$conns failed login(s) from $nips IP(s) in 24 h"
+  if (( conns > SECURITY_SSH_FAIL_WARN )); then emit WARN ssh:failures "$summary (threshold $SECURITY_SSH_FAIL_WARN)"
+  else emit OK ssh:failures "$summary"; fi
+  top=$(sed -n '2,$p' <<<"$stats" | grep -v '^users	' | sort -t$'\t' -k2,2nr -k1,1 | head -3 \
+        | while IFS=$'\t' read -r ip c; do printf '%s ×%s (%s)\n' "$ip" "$c" "$(ip_label "$ip")"; done | paste -sd, - | sed 's/,/, /g')
+  users=$(sed -n 's/^users	//p' <<<"$stats" | tr ' ' '\n' | sed '/^$/d' | head -6 | paste -sd, - | sed 's/,/, /g')
+  emit INFO ssh:failures "top sources: ${top}${users:+; users tried: $users}"
   return 0
+}
+
+# `ssh-keygen -lf` lines ("256 SHA256:… comment (ED25519)") for a user's authorized keys.
+# Fails when the user or the file cannot be read. Fixture mode: $FIX/authorized_fingerprints.<user>
+authorized_fingerprints() {  # USER
+  local u="$1" home out="" akf
+  if [[ -n "$FIX" ]]; then
+    [[ -f "$FIX/authorized_fingerprints.$u" ]] || return 1
+    cat "$FIX/authorized_fingerprints.$u"
+    return 0
+  fi
+  home=$(getent passwd "$u" 2>/dev/null | cut -d: -f6)
+  [[ -n "$home" ]] || return 1
+  for akf in "$home/.ssh/authorized_keys" "$home/.ssh/authorized_keys2"; do
+    [[ -f "$akf" ]] || continue
+    out+=$(run_cmd ssh-keygen 5 ssh-keygen -lf "$akf")$'\n'
+  done
+  [[ -n "${out//$'\n'/}" ]] || return 1
+  printf '%s' "$out"
 }
 
 # Merge IPs into the ssh-sources baseline; prints the IPs that were new. Format: ip|first|last, #created=
@@ -684,17 +727,50 @@ check_sshsources() {
   fi
   j=$(journal_ssh)
   if [[ -n "$j" ]]; then
-    logins=$(sed -nE 's/.*Accepted [a-z/-]+ for ([^ ]+) from ([0-9a-fA-F.:]+) port.*/\1 \2/p' <<<"$j" | sort | uniq -c | sort -rn)
+    # One entry per user + source + key: when (first–last in the window) and WHICH key, named by its
+    # authorized_keys comment. No counts: deploy tools open a new SSH connection per command, so the
+    # number of accepted connections says nothing about how many times a person logged in.
+    # awk output: "<last-line-no> <user> <ip> <fingerprint|-> <first HH:MM> <last HH:MM>", newest first.
+    logins=$(awk '
+      /Accepted [a-z\/-]+ for / {
+        t = ($3 ~ /^[0-9][0-9]:[0-9][0-9]/) ? substr($3, 1, 5) : "?"
+        u = ""; ip = ""; fp = "-"
+        for (i = 1; i <= NF; i++) {
+          if ($i == "for") u = $(i + 1)
+          if ($i == "from") ip = $(i + 1)
+          if ($i ~ /^SHA256:/) fp = $i
+        }
+        if (u == "" || ip == "") next
+        k = u " " ip " " fp
+        if (!(k in first)) first[k] = t
+        last[k] = t; seen[k] = NR
+      }
+      END { for (k in seen) print seen[k], k, first[k], last[k] }' <<<"$j" | sort -rn)
     if [[ -n "$logins" ]]; then
-      local shown=() total
+      local shown=() total keymap="" known=" " when label lu
       total=$(wc -l <<<"$logins" | tr -d ' ')
-      while read -r cnt user ip; do
-        shown+=("$user@$ip ×$cnt ($(ip_label "$ip"))")
-        ips+=" $ip"
+      # user<TAB>fingerprint<TAB>comment for every authorized key of the users seen
+      for lu in $(awk '{ print $2 }' <<<"$logins" | sort -u); do
+        local fps
+        fps=$(authorized_fingerprints "$lu") || continue
+        known+="$lu "
+        keymap+=$(awk -v u="$lu" 'NF >= 2 { c = ""; for (i = 3; i < NF; i++) c = c (c == "" ? "" : " ") $i; print u "\t" $2 "\t" (c == "" ? "no comment" : c) }' <<<"$fps")$'\n'
+      done
+      while read -r _ user ip fp t1 t2; do
+        when=$([[ "$t1" == "$t2" ]] && echo "at $t2" || echo "$t1–$t2")
+        if [[ "$fp" == "-" ]]; then
+          label="non-key auth"
+        else
+          label=$(awk -F'\t' -v u="$user" -v f="$fp" '$1 == u && $2 == f { print $3; exit }' <<<"$keymap")
+          if [[ -n "$label" ]]; then label="key \"$label\""
+          elif [[ "$known" == *" $user "* ]]; then label="key …${fp: -8} (NOT in authorized_keys now)"
+          else label="key …${fp: -8}"; fi
+        fi
+        shown+=("$user from $ip ($(ip_label "$ip")) $when, $label")
       done <<<"$(head -5 <<<"$logins")"
-      while read -r _ _ ip; do ips+=" $ip"; done <<<"$logins"
+      while read -r _ _ ip _; do ips+=" $ip"; done <<<"$logins"
       (( total > 5 )) && shown+=("+$((total - 5)) more")
-      emit INFO ssh:logins "accepted in 24 h: $(join_by ', ' "${shown[@]}")"
+      emit INFO ssh:logins "24 h: $(join_by '; ' "${shown[@]}")"
     fi
   fi
   [[ -n "${ips// /}" ]] || return 0

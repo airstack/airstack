@@ -59,7 +59,7 @@ Reachable from the internet:
 🌐 tailnet: not public: UFW on tailscale0 tcp/3773, tcp/8317; serve tcp/3773 → 127.0.0.1:3773
 🌐 tunnel: cliproxy.example.com → http://localhost:8317 (4 connections)
 ✅ 12 checks OK                                                  all OK lines, collapsed
-ℹ️ ssh:logins: accepted in 24 h: adminroot@203.0.113.7 ×661 (public)   a few INFO lines
+ℹ️ ssh:logins: 24 h: adminroot from 203.0.113.7 (public) 08:02–09:31, key "laptop"   a few INFO lines
 … +3 more (see logs/host_security.log)
 ```
 
@@ -84,8 +84,8 @@ Disable a check with `SECURITY_SKIP="name ..."`.
 | `docker` | For each daemon in `SECURITY_DOCKER_HOSTS`: ports published on `0.0.0.0`/`::` (Docker bypasses UFW), `--privileged`, host PID namespace, a mounted Docker socket. Host-network containers are listed. | WARN for each risky setting. A public publish shows as `reachable:docker`. INFO for host network (silence with `SECURITY_HOSTNET_OK`). |
 | `tunnel` | Cloudflare tunnel hostnames. A remotely managed `cloudflared` logs `Updated to new configuration config="{...ingress...}"` when it connects. The check reads the last such line from the logs of containers that match `SECURITY_CLOUDFLARED_CONTAINERS` (or `journalctl -u cloudflared`). It prints `hostname → service` pairs only, never tokens. | INFO per hostname. WARN for a hostname missing from, or extra to, `SECURITY_EXPECT_DOMAINS`. |
 | `cloudflared` | `http://127.0.0.1:20241/ready` (`readyConnections`). | FAIL at 0. WARN below `SECURITY_CLOUDFLARED_MIN_CONNECTIONS`. INFO when there are no metrics (not every stack has a tunnel). |
-| `ssh` | `sshd -T`: `PermitRootLogin` must be `no`/`prohibit-password`, `PasswordAuthentication no`. Failed-auth lines in the last 24 h (`Failed password`, `Invalid user`, `Connection closed by authenticating user`) and the top 3 source IPs. | FAIL for root login or passwords. WARN for keyboard-interactive auth. WARN above `SECURITY_SSH_FAIL_WARN` failed lines. |
-| `sshsources` | Open SSH sessions now (user, source IP, how long, tailnet or public). Accepted logins in 24 h as `user@ip ×count`. A baseline of known source IPs. | WARN once for a login from an IP never seen before. |
+| `ssh` | `sshd -T`: `PermitRootLogin` must be `no`/`prohibit-password`, `PasswordAuthentication no`. Failed logins in the last 24 h, counted per connection (source IP + port), not per log line: sshd writes several lines per attempt. Then the top 3 source IPs and the usernames tried. | FAIL for root login or passwords. WARN for keyboard-interactive auth. WARN above `SECURITY_SSH_FAIL_WARN` failed logins. |
+| `sshsources` | Open SSH sessions now (user, source IP, how long, tailnet or public). Accepted logins in 24 h, one entry per user + source + key: the time window (first–last) and the key, named by its comment in that user's `authorized_keys` ("NOT in authorized_keys now" if it was removed since). No counts: deploy tools open a new connection per command. A baseline of known source IPs. | WARN once for a login from an IP never seen before. |
 | `accounts` | uid 0 accounts. `docker` group members (root-equivalent). NOPASSWD sudo rules in `/etc/sudoers` and `/etc/sudoers.d`. | FAIL for a uid 0 account other than root. WARN if the docker group or the NOPASSWD users differ from `SECURITY_DOCKER_USERS` / `SECURITY_SUDO_USERS` (when set). Otherwise INFO. |
 | `persistence` | A baseline of hashes: every `authorized_keys*` (root and `/home/*`), `/etc/sudoers`, `/etc/sudoers.d/*`, each account's uid and shell (never password hashes), the `docker` and `sudo` group lines, and every `/etc/systemd/system/*.service` and `*.timer`. Not `/etc/cron.d` (deploys change it). | First run: INFO "baseline created". Later: WARN **once** naming the items that were added, changed or removed (names only), then the baseline is updated. |
 | `secrets` | `{installDir}` is not world-readable. `crons/env.d/*` are mode 600. If other users can enter `{installDir}`: world-readable `*.env`, `*.pem`, `*.key` there. A Telegram-token-shaped string in `/etc/cron.d/*` or `/etc/stacks/*.env` (both world-readable). | WARN for loose modes. FAIL for a token; it prints the file name only, never the match. |
@@ -203,7 +203,7 @@ A number knob with a bad value stops the script with exit 2 and a clear message,
 | `SECURITY_PUBLIC_PORTS` | sshd ports (`sshd -T`, else 22) as `P/tcp`, plus `41641/udp` when tailscale is installed | ports allowed to be open to the internet: `222`, `222/tcp`, `41641/udp` |
 | `SECURITY_DOCKER_HOSTS` | `unix:///var/run/docker.sock` | daemons to inspect; add rootless ones, e.g. `unix:///run/user/1002/docker.sock` |
 | `SECURITY_HOSTNET_OK` | (none) | container-name globs whose host network is fine |
-| `SECURITY_SSH_FAIL_WARN` | 200 | failed-auth lines per 24 h before WARN |
+| `SECURITY_SSH_FAIL_WARN` | 200 | failed logins (connections) per 24 h before WARN |
 | `SECURITY_DOCKER_USERS` | (none) | expected docker group members |
 | `SECURITY_SUDO_USERS` | (none) | expected NOPASSWD sudo users |
 | `SECURITY_OUTBOUND_OK_PORTS` | `22 53 80 123 222 443 853 8443` | usual outbound ports |
