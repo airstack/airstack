@@ -5,13 +5,13 @@ airstack manages a fleet of VPS machines from one fleet repo. One binary runs in
 local health, config history, repair). This repo is the core. A user's fleet repo (machines,
 stacks, fleet plugins, secrets) is separate and installs airstack.
 
-Current work: `plans/phase-1.md`.
+Design: `plans/phase-1.md`. Release checklist: `plans/release-1.md`. User docs: `docs/cli/`.
 
 ## Ground rules
 
 1. **The CLI guards against accidents. It is NOT a security boundary.** Anyone can copy the binary
-   and remove a check. The real limits are Unix permissions, the stack-user-only `.stack/.git`, and
-   sudoers rules. Never weaken those because "the CLI checks it". Never add a CLI check and call it
+   and remove a check. The real limits are Unix permissions, the root-only config history (`<root>/.stack`),
+   and sudoers rules. Never weaken those because "the CLI checks it". Never add a CLI check and call it
    security.
 2. **Only root-owned config can widen what the CLI may do.** `/etc/airstack/machine.yaml` decides
    node mode and roles. User config (`~/.config/airstack/`) and `AIRSTACK_*` env vars may only turn
@@ -24,8 +24,8 @@ Current work: `plans/phase-1.md`.
 5. **Never litter a controller.** A controller install writes one binary. Config is written only when
    the user sets something. All fleet state lives in the fleet repo's gitignored `.airstack/`.
 6. **No real fleet values in this repo.** Tests use fixtures under `test/fixtures/` with documentation
-   addresses (`203.0.113.0/24`, `198.51.100.0/24`, `100.64.0.0/10`). Before committing, run the
-   local leak scan if present: `git grep -nIE -f .git/info/leakscan` (exit 1 = clean).
+   addresses (`192.0.2.0/24`, `203.0.113.0/24`, `198.51.100.0/24`, `100.64.0.0/10`). Before
+   committing, run `sh devutils/leak-scan.sh` (it also reads your local `.git/info/leakscan`).
 7. **Agent-first output.** Concise text, stable line prefixes (`ok`, `warn`, `fail`, `->` next step),
    exit codes 0 ok / 1 warnings / 2 failures / 3 usage or blocked. All output goes through one
    formatter so `--json` can be added later. A blocked verb prints one line naming the file and key
@@ -37,6 +37,12 @@ Current work: `plans/phase-1.md`.
 - `stack: name` and plugin `name` resolve in the fleet repo only. Built-ins are always `airstack/name`.
   Never fall back from a bare name to a built-in.
 - Merge: maps deep-merge (higher layer wins), lists replace, `null` deletes.
+
+## Writing style
+
+All prose (docs, CLI output, error messages) uses ASD-STE100-like Simplified Technical English:
+short sentences, active voice, one idea per sentence, simple words. Keep files small and split them
+by topic.
 
 ## Dev
 
