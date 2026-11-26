@@ -10,12 +10,12 @@ Rules: AGENTS.md (CLI guards accidents, not a security boundary; no real fleet v
 leak scan before commits). Commit + push to airstack/airstack as work lands.
 
 ## 1. Cloudflare Access enforcement
-- [ ] `onDeploy: refuse|warn`: after the machine unit starts cloudflared, probe every route
+- [x] `onDeploy: refuse|warn`: after the machine unit starts cloudflared, probe every route
       (same classifier as host_security.sh); refuse = stop cloudflared + fail the deploy naming the
       route; unknown never refuses (warn).
-- [ ] `onScan: stop|alert`: 15-min host_alerter stops `CF_CONTAINER` on a definite FAIL, alerts
+- [x] `onScan: stop|alert`: 15-min host_alerter stops `CF_CONTAINER` on a definite FAIL, alerts
       "tunnel stopped"; next deploy starts it (and refuses again if still public).
-- [ ] Tests + live test on airstack-test1 (temporary unprotected route or exempt toggle).
+- [x] Tests + live test on airstack-test1 (pass path live; stop → flag → deploy restarts → flag clears, live with a fake FAIL; refuse path by unit test: no way to make a route public without the dashboard).
 
 ## 2. Phase 2 — config history and sync (plans/phase-1.md §0 row 2)
 - [ ] `/srv/airstack/.stack/.git` (stackroot, 700): managed files per unit (rendered + seeded), live

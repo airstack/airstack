@@ -240,13 +240,43 @@ security_sample() {
   fi
 }
 
+# >>> access-guard (tests run this block alone)
+# A key from the manifest of the unit that runs cloudflared (the one with CF_CONTAINER).
+cf_setting() {  # KEY
+  local m
+  for m in "$STACKS_MANIFEST_DIR"/*.env; do
+    [[ -f "$m" ]] || continue
+    [[ -n "$(get_manifest_value "$m" CF_CONTAINER)" ]] || continue
+    get_manifest_value "$m" "$1"
+    return 0
+  done
+  return 1
+}
+
 # Cloudflare Access guard for the 15-minute run: each FAIL/WARN line of `host_security.sh --access`
 # becomes an alert, so a route that loses Access protection alerts within 15 minutes (and recovers).
+# With access.onScan: stop (CF_ACCESS_ON_SCAN=stop), a definite FAIL also stops the cloudflared
+# container. A flag file keeps the "tunnel stopped" alert steady until a deploy starts it again.
 # SECURITY_ACCESS_ALERTS=false turns it off. Best effort: never changes this script's exit status.
+ACCESS_STOP_FLAG="${STATE_DIR}/host-health/access-stopped"
 access_alerts() {
   [[ "${SECURITY_ACCESS_ALERTS:-true}" == true ]] || return 0
-  local script="${SECURITY_SCRIPT:-${INSTALL_DIR}/plugins/cron/host-status/host_security.sh}" out line
+  local script="${SECURITY_SCRIPT:-${INSTALL_DIR}/plugins/cron/host-status/host_security.sh}"
+  local out line container on_scan fails=()
   [[ -f "$script" ]] || return 0
+  container=$(cf_setting CF_CONTAINER) || container=""
+  on_scan=$(cf_setting CF_ACCESS_ON_SCAN) || on_scan=""
+
+  # The guard stopped the tunnel earlier: report that until the container runs again (a deploy).
+  if [[ -f "$ACCESS_STOP_FLAG" ]]; then
+    if [[ -n "$container" ]] && [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" == true ]]; then
+      rm -f "$ACCESS_STOP_FLAG"
+    else
+      alerts+=("🛑 Cloudflare tunnel stopped by the Access guard: $(cat "$ACCESS_STOP_FLAG"). Protect the route, then deploy again.")
+      return 0
+    fi
+  fi
+
   if command -v timeout >/dev/null 2>&1; then
     out=$(timeout -k 2 60 bash "$script" --access 2>/dev/null) || true
   else
@@ -254,11 +284,24 @@ access_alerts() {
   fi
   while IFS= read -r line; do
     case "$line" in
-      FAIL\|access\|*) alerts+=("Cloudflare Access: ${line#FAIL|access|}") ;;
+      FAIL\|access\|*) fails+=("${line#FAIL|access|}") ;;
       WARN\|access\|*) alerts+=("Cloudflare Access (unverified): ${line#WARN|access|}") ;;
     esac
   done <<<"$out"
+  (( ${#fails[@]} > 0 )) || return 0
+
+  if [[ "$on_scan" == stop && -n "$container" ]] && docker stop "$container" >/dev/null 2>&1; then
+    mkdir -p "$(dirname "$ACCESS_STOP_FLAG")"
+    printf '%s' "$(join_lines "${fails[@]%% (*}")" >"$ACCESS_STOP_FLAG"
+    alerts+=("🛑 Cloudflare tunnel stopped by the Access guard: $(cat "$ACCESS_STOP_FLAG"). Protect the route, then deploy again.")
+    return 0
+  fi
+  for line in "${fails[@]}"; do alerts+=("Cloudflare Access: $line"); done
+  [[ "$on_scan" == stop ]] && alerts+=("Cloudflare Access: could not stop the tunnel container '${container:-unknown}'")
+  return 0
 }
+join_lines() { local IFS=';'; printf '%s' "$*" | sed 's/;/; /g'; }
+# <<< access-guard
 
 # --- Telegram config ---
 TELEGRAM_CONFIGURED=false
@@ -451,8 +494,8 @@ fi
 # --- Normal alert mode: only alert on state change ---
 # Outbound sampler runs on exit (after the alert work), whatever path the script exits by.
 trap 'security_sample' EXIT
+access_alerts   # before the Telegram check: onScan: stop must work without Telegram
 if ! $TELEGRAM_CONFIGURED; then exit 0; fi
-access_alerts
 
 current_state=$(printf '%s\n' "${alerts[@]}" 2>/dev/null | sort | md5sum | cut -d' ' -f1)
 previous_state=$(cat "$STATE_FILE" 2>/dev/null || echo "none")

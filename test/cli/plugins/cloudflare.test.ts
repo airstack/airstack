@@ -57,30 +57,6 @@ describe('cf-tunnel helpers', () => {
     })
   })
 
-  describe('cloudflare access check logic', () => {
-    it('detects protected domain from 302 redirect to cloudflareaccess.com', () => {
-      const status = 302
-      const location = 'https://example.cloudflareaccess.com/cdn-cgi/access/login'
-      const isProtected =
-        (status === 302 || status === 303) &&
-        (location.includes('cloudflareaccess.com') || location.includes('access.'))
-      expect(isProtected).toBe(true)
-    })
-
-    it('detects unprotected domain from 200 response', () => {
-      const status = 200
-      const isUnprotected = status === 200
-      expect(isUnprotected).toBe(true)
-    })
-
-    it('detects protected from 403 with cloudflare body', () => {
-      const status = 403
-      const body = '<html>cloudflare access denied</html>'
-      const isProtected =
-        status === 403 && (body.includes('cloudflare') || body.includes('Access'))
-      expect(isProtected).toBe(true)
-    })
-  })
 })
 
 describe('cloudflare access config', () => {

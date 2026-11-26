@@ -117,8 +117,8 @@ plugins:
       required: true        # default true: every public route must be behind Access
       exempt:               # deliberately public routes (hostname or hostname/path)
         - hooks.example.com
-      onDeploy: refuse      # refuse | warn (default refuse)  — enforcement: next step, not active yet
-      onScan: alert         # alert | stop  (default alert)   — stop: next step, not active yet
+      onDeploy: refuse      # refuse | warn (default refuse)
+      onScan: alert         # alert | stop  (default alert)
 ```
 
 Deploy validates the block (`airstack fleet check` too) and writes it into the machine manifest
@@ -136,6 +136,30 @@ How a route is judged (one request, no credentials, no redirect following):
 The 15-minute `host_alerter` run checks too and alerts on a change (and on recovery), so a route
 that loses protection is reported within 15 minutes. `SECURITY_ACCESS_ALERTS=false` (cron env of
 `host_alerter`) turns that off.
+
+### What happens when a route is public
+
+**On deploy** (`onDeploy`). After the machine unit starts cloudflared, deploy reads the live routes
+from cloudflared on the machine. Then it sends one request to each public hostname from the
+controller.
+
+- `refuse` (default): deploy stops cloudflared and fails. The error names each public route.
+- `warn`: deploy keeps the tunnel up and shows a warning.
+- A route that deploy cannot verify (unknown) gives a warning only. It never stops the tunnel.
+
+**On the 15-minute scan** (`onScan`).
+
+- `alert` (default): you get an alert. The tunnel stays up.
+- `stop`: the alerter stops the cloudflared container and sends one alert: "Cloudflare tunnel
+  stopped by the Access guard". The alert stays until a deploy starts the tunnel again. If the
+  route is still public, that deploy refuses again (with `onDeploy: refuse`).
+
+The stop action works without Telegram. Only a definite FAIL stops the tunnel; a WARN never does.
+
+To fix a public route:
+
+1. Add a Cloudflare Access application for the hostname, or add the hostname to `access.exempt`.
+2. Run `airstack deploy <machine>`.
 
 ## Your own checks (security.d)
 

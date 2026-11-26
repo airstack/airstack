@@ -10,6 +10,7 @@
  */
 
 import type { PluginCommandContext } from '../../types.js'
+import { classify, fetchProber } from './access.js'
 
 /**
  * Extract root domain from a full domain (e.g. app.example.com -> example.com).
@@ -128,47 +129,6 @@ export function checkSubdomainDepth(domain: string): { ok: boolean; message?: st
     }
   }
   return { ok: true }
-}
-
-// ── Cloudflare Access check ──────────────────────────────────────────────────
-
-/**
- * Check if a domain is protected by Cloudflare Access.
- * Makes a fetch request and checks for 302/403 redirect to cloudflareaccess.com.
- * Returns: 'protected' | 'unprotected' | error description
- */
-export async function checkCloudflareAccess(urlOrDomain: string): Promise<string> {
-  try {
-    const url = urlOrDomain.startsWith('https://') ? urlOrDomain : `https://${urlOrDomain}`
-    const resp = await fetch(url.endsWith('/') ? url : url + '/', {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(10000),
-    })
-
-    // 302/303 with Location containing cloudflareaccess = protected
-    const location = resp.headers.get('location') || ''
-    if (
-      (resp.status === 302 || resp.status === 303) &&
-      (location.includes('cloudflareaccess.com') || location.includes('access.'))
-    ) {
-      return 'protected'
-    }
-
-    // 403 from Cloudflare Access
-    if (resp.status === 403) {
-      const body = await resp.text()
-      if (body.includes('cloudflare') || body.includes('Access')) return 'protected'
-    }
-
-    // 200 or other status = not protected
-    if (resp.status === 200) return 'unprotected'
-
-    return `HTTP ${resp.status}`
-  } catch (e: any) {
-    if (e?.name === 'TimeoutError') return 'timeout'
-    if (e?.code === 'ENOTFOUND') return 'DNS not configured'
-    return e?.message || 'unknown error'
-  }
 }
 
 // ── Output helpers ───────────────────────────────────────────────────────────
@@ -366,13 +326,14 @@ export async function cmdVerify(ctx: PluginCommandContext) {
 
   header('Cloudflare Access Protection')
   for (const domain of hostnames) {
-    const accessResult = await checkCloudflareAccess(domain)
-    if (accessResult === 'protected') {
+    const answer = await fetchProber(`https://${domain}/`)
+    const state = classify(answer)
+    if (state === 'protected') {
       pass(`${domain}: protected by Cloudflare Access`)
-    } else if (accessResult === 'unprotected') {
+    } else if (state === 'unprotected') {
       fail(`${domain}: NOT protected by Cloudflare Access — anyone with the URL can reach it`)
     } else {
-      info(`${domain}: could not check (${accessResult})`)
+      info(`${domain}: could not check (HTTP ${answer.code || 'no answer'})`)
     }
   }
 
