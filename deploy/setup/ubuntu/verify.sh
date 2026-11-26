@@ -78,7 +78,10 @@ echo "Services:"
 SERVICES="docker fail2ban ufw"
 [ "${INSTALL_SYSBOX}" = "true" ] && SERVICES="docker sysbox fail2ban ufw"
 for svc in ${SERVICES}; do
-  if systemctl is-active --quiet "${svc}" 2>/dev/null; then
+  if [ "${svc}" = "ufw" ] && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    # The firewall is what matters; the ufw.service oneshot can read "inactive" on some images.
+    pass "ufw active (rules loaded)"
+  elif systemctl is-active --quiet "${svc}" 2>/dev/null; then
     pass "${svc} running"
   else
     fail "${svc} not running"
@@ -212,11 +215,11 @@ fi
 # ── Swap & Sysctl ────────────────────────────────────────────────────────────
 
 echo "System:"
-if swapon --show --noheadings | grep -q /swapfile; then
-  SWAP_SIZE=$(swapon --show --noheadings | awk '{print $3}')
+if swapon --show --noheadings | grep -q .; then
+  SWAP_SIZE=$(swapon --show --noheadings | awk '{print $1 " " $3}' | paste -sd, -)
   pass "Swap active (${SWAP_SIZE})"
 else
-  fail "Swap not active"
+  warn "Swap not active"
 fi
 
 if [ "$(sysctl -n vm.swappiness 2>/dev/null)" = "10" ]; then

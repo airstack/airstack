@@ -30,9 +30,10 @@ export const DEPLOY_USAGE = `Usage: airstack deploy <machine>... | '<pattern>' |
   --dry-run            sync + validate compose on the machine; do not start containers
   --force              recreate all services
   --prune              stop instances that were removed from the machine file (keeps their dirs)
-  --install            first-time setup: ${['base', 'docker', 'rootless (if dev users)', 'verify'].join(', ')},
+  --install            first-time setup: ${['base', 'harden', 'docker', 'rootless (if dev users)', 'verify'].join(', ')},
                        write /etc/airstack/machine.yaml, then deploy
   --install --step <s> run one setup step only (${SETUP_STEPS.join(', ')})
+  --finalize           with --step harden: close port 22 (set host.ssh.port to the hardened port first)
   -v, --verbose        phase-by-phase output
 
 Quote patterns: airstack deploy 'airstack-*'  (zsh aborts or expands unquoted globs).`
@@ -47,11 +48,12 @@ interface Flags {
   prune: boolean
   install: boolean
   step?: string
+  finalize: boolean
   verbose: boolean
 }
 
 function parseFlags(args: string[]): Flags | string {
-  const f: Flags = { targets: [], all: false, stage: false, dryRun: false, force: false, prune: false, install: false, verbose: false }
+  const f: Flags = { targets: [], all: false, stage: false, dryRun: false, force: false, prune: false, install: false, finalize: false, verbose: false }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     switch (a) {
@@ -62,6 +64,7 @@ function parseFlags(args: string[]): Flags | string {
       case '--force': f.force = true; break
       case '--prune': f.prune = true; break
       case '--install': f.install = true; break
+      case '--finalize': f.finalize = true; break
       case '--step': f.step = args[++i]; if (!f.step) return '--step needs a step name'; break
       case '-v': case '--verbose': f.verbose = true; break
       default:
@@ -141,7 +144,7 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
   if (f.install) {
     const steps: SetupStep[] = f.step
       ? [f.step as SetupStep]
-      : ['base', 'docker', ...(m.host.users.dev.length ? (['rootless'] as SetupStep[]) : []), 'verify']
+      : ['base', 'harden', 'docker', ...(m.host.users.dev.length ? (['rootless'] as SetupStep[]) : []), 'verify']
     for (const step of steps) {
       out.info(`${name}: setup ${step} …`)
       try {
@@ -150,6 +153,7 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
           projectRoot: m.dir ?? fleet.root,
           sharedPaths: [fleet.root, CORE_ROOT],
           persistSecret: (k, v) => upsertSecret(fleet.root, name, k, v),
+          flags: { finalize: f.finalize },
         })
         out.ok(`${name}: setup ${step}`)
       } catch (e) {

@@ -186,28 +186,33 @@ echo "  SSH listening on ports 22 and ${SSH_HARDENED_PORT}"
 CURRENT_STEP="swap configuration (${SWAP_SIZE})"
 echo "==> Configuring swap (${SWAP_SIZE})..."
 
-if swapon --show | grep -q /swapfile; then
-  echo "  Swap already active, skipping creation"
+if swapon --show --noheadings | grep -q .; then
+  # Any active swap (our /swapfile, zram, a swap partition) is enough.
+  echo "  Swap already active ($(swapon --show --noheadings | awk '{print $1}' | paste -sd, -)), skipping creation"
 else
   fallocate -l "${SWAP_SIZE}" /swapfile
   chmod 600 /swapfile
   mkswap /swapfile
-  swapon /swapfile
-
-  # Persist across reboots
-  grep -q '/swapfile' /etc/fstab || \
-    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  if swapon /swapfile; then
+    # Persist across reboots
+    grep -q '/swapfile' /etc/fstab || \
+      echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  else
+    # e.g. btrfs or container-backed root filesystems refuse swapfiles: not fatal.
+    echo "  WARNING: swapon /swapfile failed (filesystem does not support swapfiles); continuing without swap" >&2
+    rm -f /swapfile
+  fi
 fi
 
 # Low swappiness: prefer RAM, only swap under pressure
 sysctl -w vm.swappiness=10 > /dev/null
 echo 'vm.swappiness=10' > /etc/sysctl.d/99-swap.conf
 
-if ! swapon --show --noheadings | grep -q /swapfile; then
-  echo "ERROR: Swap not active after setup" >&2
-  exit 1
+if swapon --show --noheadings | grep -q .; then
+  echo "  Swap: $(swapon --show --noheadings | awk '{print $1 " " $3}' | paste -sd, -)"
+else
+  echo "  WARNING: no swap active" >&2
 fi
-echo "  Swap: $(swapon --show --noheadings | awk '{print $3}')"
 
 # ── 4. Fail2ban ──────────────────────────────────────────────────────────────
 
@@ -305,7 +310,11 @@ kernel.dmesg_restrict = 1
 kernel.kptr_restrict = 2
 EOF
 
-sysctl -p /etc/sysctl.d/99-security.conf
+# Some keys are refused on shared-kernel VMs/containers (e.g. kernel.dmesg_restrict under OrbStack
+# or LXC): warn; the check below still fails if the networking keys did not apply.
+if ! sysctl -p /etc/sysctl.d/99-security.conf; then
+  echo "  WARNING: some kernel parameters were refused (shared kernel?); see lines above" >&2
+fi
 
 if [ "$(sysctl -n net.ipv4.tcp_syncookies)" != "1" ]; then
   echo "ERROR: Kernel sysctl parameters not applied" >&2

@@ -10,10 +10,26 @@ Progress:
       plugin API (`plugin-api.ts`), output formatter (`output.ts`), dispatcher (`index.ts`),
       `whoami`, `fleet list|show|config|check`, built-in `airstack/cliproxy` stack, fixture
       `test/fixtures/fleet-basic`. Legacy stack-cli verbs still run behind the guard.
-- [ ] Step 3: deploy on the fleet model (machine + per-instance contexts, compose per instance,
-      run users, cron instance prefixing, `/etc/airstack/machine.yaml`, `--install`, `--prune`,
-      port/network checks), `ssh`, `status`, `fleet logs`, `fleet plugin`; remove legacy verbs.
-- [ ] Step 4: live acceptance on airstack-test1 (section 11).
+- [x] Step 3: deploy on the fleet model. Implemented as deploy UNITS (`cli/lib/units.ts`): one
+      machine unit (compose project `airstack`) + one per stack instance, each a legacy-shaped
+      Config through the unchanged pipeline (phase 2's on-node apply can drop the adapter).
+      `compose.ts` (-p, run user, rootless socket), `deploy` (`--stack --stage --dry-run --force
+      --prune --install [--step] --finalize`), marker writer, orphan detection, vps-setup as a
+      library, `ssh`, `status`, `fleet plugin`; legacy verbs removed. Stack crons run as the
+      instance user. Cron names are `<project>_<cron>` (stack-cli's scheme), not `<inst>.<cron>`.
+- [x] Step 4: live acceptance on airstack-test1 (2026-11-26):
+      `--install` (base, harden, docker, rootless, verify, marker) from a fresh Ubuntu 26.04 VM;
+      `web` fleet stack twice (stackroot/root daemon :8081, deployuser/rootless :8082) + built-in
+      `airstack/cliproxy` (:8317, HTTP 200); redeploy keeps container IDs; `--stack` + pattern;
+      orphan warn + `--prune`; compiled linux-arm64 binary on the node refuses deploy/--fleet/
+      user-config widening next to a fleet clone. Setup scripts fixed on the way: `gpg --batch
+      --yes` (re-run after partial failure), existing swap accepted / swapfile failure non-fatal,
+      refused kernel sysctls non-fatal, verify checks `ufw status` not the unit, base installs rsync.
+- Open (not verified live yet): machine-level compose services (cloudflared with a real tunnel
+  token) and the shared `airstack` network; tailscale plugin; `harden --finalize` + port switch;
+  port-collision and rootless-network checks in `fleet check` (planned, not built); box file is
+  still `docker-compose.yml`; the cron plugin's host-status scripts are staged into every unit
+  that uses cron (harmless, wasteful); `<root>` itself is root:root 755 (unit dirs are 750).
 Source: a fresh copy of stack-cli (`../stack-cli`, HEAD `fc05a0f`). stack-cli stays as it is.
 
 ## 0. Where phase 1 sits
