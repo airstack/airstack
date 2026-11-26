@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.5
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bunx tsc --noEmit -p .
+      - name: Tests
+        run: bunx vitest run
+      - name: Leak scan (no real IPs or tokens in the repo)
+        run: sh devutils/leak-scan.sh
+      - name: Shell syntax
+        run: |
+          set -e
+          for f in install.sh $(git ls-files '*.sh'); do bash -n "$f"; done
+      - name: Build one release target
+        run: bun devutils/release/build.ts --target linux-x64 --out dist
+      - name: Smoke test the compiled binary
+        run: |
+          set -e
+          tar -xzf dist/airstack-*-linux-x64.tar.gz -C dist
+          bin=$(ls -d dist/airstack-*-linux-x64)/bin/airstack
+          "$bin" version
+          "$bin" --fleet test/fixtures/fleet-basic fleet check || [ $? -le 1 ]
