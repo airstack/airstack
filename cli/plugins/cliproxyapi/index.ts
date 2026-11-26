@@ -63,6 +63,13 @@ export function register(config: unknown): Plugin {
     name: 'cliproxyapi',
     scope: 'stack',
     composeServices,
+    // Secrets in the proxy's config.yaml: client keys, the management key and
+    // provider keys (gemini/claude/codex/openai-compatibility entries).
+    // Generic redaction also catches these; the rule makes it certain.
+    redact: [{
+      files: ['config.yaml', '.cliproxyapi/config.yaml'],
+      keys: ['api-keys', 'api-key', 'api-key-entries', 'secret-key', 'headers', 'generative-language-api-key'],
+    }],
     hooks: {
       ...(us ? { 'pre-stage': async (ctx: DeployContext) => usageServerKeepOwner(ctx) } : {}),
       'post-sync': async (ctx: DeployContext) => {

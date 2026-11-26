@@ -1,5 +1,7 @@
 // cli/types.ts
 
+import type { RedactRule } from './lib/redact/rules.js'
+
 // ── Config Types ────────────────────────────────────────────────────────────
 
 export interface HostConfig {
@@ -100,11 +102,15 @@ export interface RunOptions {
   onStdout?: (line: string) => void
   /** Called for each line of stderr as it arrives. Output is still buffered in the return value. */
   onStderr?: (line: string) => void
+  /** Text sent to the remote command's stdin. */
+  stdin?: string
 }
 
 export interface RemoteExecutor {
   run(command: string, opts?: RunOptions): Promise<{ stdout: string; stderr: string; exitCode: number }>
   rsync(src: string, dest: string, opts?: string[]): Promise<{ exitCode: number }>
+  /** rsync from the machine to this controller (remote path → local path). */
+  download?(src: string, dest: string, opts?: string[]): Promise<{ exitCode: number }>
 }
 
 // ── Logger ──────────────────────────────────────────────────────────────────
@@ -232,6 +238,8 @@ export interface Plugin {
   /** CLI sub-commands registered by this plugin */
   commands?: Record<string, PluginCommand>
   hooks?: Partial<Record<HookPhase, (ctx: DeployContext, config: unknown) => Promise<void>>>
+  /** Keys that hold secrets in this plugin's files. `airstack machine config read` and diffs redact them. */
+  redact?: RedactRule[]
 }
 
 // ── Registered Files ────────────────────────────────────────────────────────

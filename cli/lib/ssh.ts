@@ -101,6 +101,7 @@ export function createRemoteExecutor(ssh: SSHConfig): RemoteExecutor {
   return {
     async run(command: string, opts?: RunOptions) {
       const proc = Bun.spawn(['ssh', ...baseArgs, target, command], {
+        stdin: opts?.stdin !== undefined ? new TextEncoder().encode(opts.stdin) : 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -116,6 +117,15 @@ export function createRemoteExecutor(ssh: SSHConfig): RemoteExecutor {
 
     async rsync(src: string, dest: string, opts: string[] = []) {
       const proc = Bun.spawn(['rsync', '-avz', '-e', rsh, '--rsync-path=sudo rsync', ...opts, src, `${target}:${dest}`], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const exitCode = await proc.exited
+      return { exitCode }
+    },
+
+    async download(src: string, dest: string, opts: string[] = []) {
+      const proc = Bun.spawn(['rsync', '-az', '-e', rsh, '--rsync-path=sudo rsync', ...opts, `${target}:${src}`, dest], {
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -169,6 +179,8 @@ export function createLoggingExecutor(executor: RemoteExecutor, log: DeployLogge
       }
       return result
     },
+
+    download: executor.download?.bind(executor),
 
     async rsync(src: string, dest: string, opts: string[] = []) {
       log.debug(`rsync ${src} → ${dest} ${opts.join(' ')}`)
