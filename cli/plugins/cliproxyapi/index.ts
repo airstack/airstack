@@ -66,6 +66,8 @@ export function register(config: unknown): Plugin {
     // Secrets in the proxy's config.yaml: client keys, the management key and
     // provider keys (gemini/claude/codex/openai-compatibility entries).
     // Generic redaction also catches these; the rule makes it certain.
+    // Box-owned: the proxy and its management API edit these on the machine.
+    tracked: ['.cliproxyapi/config.yaml', ...(us ? ['.usage-server/usage-server.env'] : [])],
     redact: [{
       files: ['config.yaml', '.cliproxyapi/config.yaml'],
       keys: ['api-keys', 'api-key', 'api-key-entries', 'secret-key', 'headers', 'generative-language-api-key'],

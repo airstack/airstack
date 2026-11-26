@@ -303,6 +303,17 @@ access_alerts() {
 join_lines() { local IFS=';'; printf '%s' "$*" | sed 's/;/; /g'; }
 # <<< access-guard
 
+# >>> report-format (tests run this block alone)
+# Names of passed checks: "✅ Disk: 12% …" -> "Disk", joined with ", ".
+passed_names() {
+  local l n out=""
+  for l in "$@"; do n="${l#✅ }"; n="${n%%:*}"; out+="${out:+, }$n"; done
+  printf '%s' "$out"
+}
+# Telegram HTML -> plain text (REPORT_OUTPUT=stdout).
+html_to_text() { sed -e 's/<[^>]*>//g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e 's/&amp;/\&/g'; }
+# <<< report-format
+
 # --- Telegram config ---
 TELEGRAM_CONFIGURED=false
 if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
@@ -311,7 +322,7 @@ fi
 
 # --- Report mode ---
 if $REPORT_MODE; then
-  if ! $TELEGRAM_CONFIGURED; then exit 0; fi
+  if ! $TELEGRAM_CONFIGURED && [[ "${REPORT_OUTPUT:-telegram}" != stdout ]]; then exit 0; fi
 
   hostname=$(hostname)
   uptime_str=$(uptime -p 2>/dev/null | sed 's/^up //' || uptime | awk -F'( |,)' '{print $2}')
@@ -470,16 +481,27 @@ if $REPORT_MODE; then
     done <<<"$SECURITY_SECTION"
   fi
 
-  # Assemble: title + summary, problems, passes, a clear gap, then details.
+  # Assemble. Short (default): problems, then one line that names the passed checks.
+  # Full (REPORT_FULL=true, `airstack machine report --full`): every check, then the details.
   nprob=${#problems[@]}
   report="📊 <b>${hostname}</b> — Daily Status"
   if (( nprob > 0 )); then report+=$'\n'"<b>⚡ ${nprob} need attention</b>"
   else report+=$'\n'"<b>✅ All checks passed</b>"; fi
   report+=$'\n'
-  for line in "${problems[@]}" "${passes[@]}"; do report+=$'\n'"$line"; done
-  report+=$'\n'$'\n'$'\n'"<b>Details</b>"
-  for line in "${sec_details[@]}" "${details[@]}"; do report+=$'\n'"$line"; done
+  for line in ${problems[@]+"${problems[@]}"}; do report+=$'\n'"$line"; done
+  if [[ "${REPORT_FULL:-false}" == true ]]; then
+    for line in ${passes[@]+"${passes[@]}"}; do report+=$'\n'"$line"; done
+    report+=$'\n'$'\n'$'\n'"<b>Details</b>"
+    for line in ${sec_details[@]+"${sec_details[@]}"} ${details[@]+"${details[@]}"}; do report+=$'\n'"$line"; done
+  elif (( ${#passes[@]} > 0 )); then
+    report+=$'\n'"✅ ${#passes[@]} passed: $(passed_names "${passes[@]}")"
+  fi
   report+=$'\n'"⏱ Uptime: ${uptime_str}"
+
+  if [[ "${REPORT_OUTPUT:-telegram}" == stdout ]]; then
+    printf '%s\n' "$report" | html_to_text
+    exit 0
+  fi
 
   response=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
     -d "chat_id=${TELEGRAM_CHAT_ID}" -d "parse_mode=HTML" --data-urlencode "text=${report}")

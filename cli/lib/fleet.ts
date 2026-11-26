@@ -62,7 +62,8 @@ export interface HostConfig {
   timezone: string
   /** port/user = the FINISHED machine; bootstrap* = a fresh box before setup (used only by --install). */
   ssh: { user: string; port: number; key: string; hardenedPort: number; bootstrapPort: number; bootstrapUser: string; expose: 'public' | 'tunnel'; tunnelHostname: string }
-  users: { sudo: string; stack: string; dev: string[]; brewOwner: string }
+  /** admins: members of the airstack-admin group (may run `airstack machine …` without full sudo). */
+  users: { sudo: string; stack: string; dev: string[]; brewOwner: string; admins: string[] }
   dockerSubnet: string
 }
 
@@ -494,6 +495,7 @@ function normalizeHost(h: Plain, machine: string): HostConfig {
       stack: String(users.stack ?? 'stackroot'),
       dev: Array.isArray(users.dev) ? users.dev.map(String) : [],
       brewOwner: String(users.brewOwner ?? ''),
+      admins: Array.isArray(users.admins) ? users.admins.map(String) : [],
     },
     dockerSubnet: String(h.dockerSubnet ?? '10.200.0.0/24'),
   }

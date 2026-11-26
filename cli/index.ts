@@ -23,6 +23,8 @@ const VERBS: (VerbSpec & { description: string })[] = [
   { name: 'deploy', requires: 'controller', needsFleet: true, mutating: true, description: 'deploy machines (--install for first-time setup)' },
   { name: 'status', requires: 'controller', needsFleet: true, description: 'containers per stack instance on each machine' },
   { name: 'ssh', requires: 'controller', needsFleet: true, mutating: true, description: 'ssh <machine> [-- <command>]' },
+  { name: 'pull', requires: 'controller', needsFleet: true, description: 'copy a machine\'s live config here; show box edits (redacted)' },
+  { name: 'machine', requires: 'node', mutating: true, description: 'this node: status | check | report | logs | config | history | apply | rollback' },
 ]
 
 // ── argv ────────────────────────────────────────────────────────────────────
@@ -87,7 +89,7 @@ switch (verb.name) {
     process.exit(await fleetCommand(args, mode.fleetPath!, out))
   }
   case 'deploy': {
-    const { deployCommand } = await import('./commands/deploy.js')
+    const { deployCommand } = await import('./commands/deploy/index.js')
     process.exit(await deployCommand(args, mode.fleetPath!, VERSION, out))
   }
   case 'status': {
@@ -97,6 +99,14 @@ switch (verb.name) {
   case 'ssh': {
     const { sshCommand } = await import('./commands/ssh-status.js')
     process.exit(await sshCommand(args, mode.fleetPath!, out))
+  }
+  case 'pull': {
+    const { pullCommand } = await import('./commands/pull.js')
+    process.exit(await pullCommand(args, mode.fleetPath!, out))
+  }
+  case 'machine': {
+    const { machineCommand } = await import('./commands/machine/index.js')
+    process.exit(machineCommand(args, out))
   }
 }
 

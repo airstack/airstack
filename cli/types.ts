@@ -240,6 +240,11 @@ export interface Plugin {
   hooks?: Partial<Record<HookPhase, (ctx: DeployContext, config: unknown) => Promise<void>>>
   /** Keys that hold secrets in this plugin's files. `airstack machine config read` and diffs redact them. */
   redact?: RedactRule[]
+  /**
+   * Box-owned config files (relative to the unit install dir). Deploy never writes them, but
+   * config history tracks them (pull, machine config read/diff/history, machine rollback).
+   */
+  tracked?: string[]
 }
 
 // ── Registered Files ────────────────────────────────────────────────────────
