@@ -76,7 +76,7 @@ function show(fleet: Fleet, args: string[], out: Output): number {
   const h = m.displayHost.host as HostConfig // display copy: secrets stay ${NAME}
   out.info(`machine  ${m.name}  (${relative(fleet.root, m.file)})`)
   out.info(`host     ${h.ip || '-'}  hostname ${h.hostname}  tz ${h.timezone || '-'}`)
-  out.info(`ssh      ${h.ssh.user}@${h.ip || h.hostname}:${h.ssh.port}  (hardened ${h.ssh.hardenedPort}, ${h.ssh.expose})`)
+  out.info(`ssh      ${h.ssh.user}@${h.ip || h.hostname}:${h.ssh.port}  (fresh box: ${h.ssh.bootstrapUser}@:${h.ssh.bootstrapPort}; ${h.ssh.expose})`)
   out.info(`users    sudo ${h.users.sudo}  stack ${h.users.stack}  dev ${h.users.dev.join(',') || '-'}`)
   out.info(`root     ${m.root}`)
   out.info(`plugins  ${Object.keys(m.plugins).join(' ') || '-'}`)

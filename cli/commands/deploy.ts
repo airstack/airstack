@@ -9,7 +9,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { join, relative } from 'node:path'
-import { loadFleet, loadMachine, selectTargets, CORE_ROOT, type Fleet } from '../lib/fleet.js'
+import { loadFleet, loadMachine, selectTargets, type Fleet } from '../lib/fleet.js'
 import { checkPluginScopes, loadPluginRef } from '../lib/fleet-check.js'
 import { buildUnits, MACHINE_UNIT, type DeployUnit } from '../lib/units.js'
 import { runDeploy } from '../deploy/runner.js'
@@ -18,9 +18,9 @@ import { renderReport } from '../lib/report.js'
 import { Logger } from '../lib/logger.js'
 import { composeCommand } from '../lib/compose.js'
 import { markerYaml, readMarker, writeMarker, type MarkerStack } from '../lib/marker.js'
-import { upsertSecret } from '../lib/secrets-writer.js'
 import { LEGACY_MANIFEST_DIR } from '../lib/paths.js'
-import { runVpsSetup, SETUP_STEPS, SetupFailed, type SetupStep } from '../vps-setup.js'
+import { SETUP_STEPS } from '../vps-setup.js'
+import { runInstall } from '../lib/install.js'
 import { EXIT, type Output } from '../lib/output.js'
 import type { DeployContext, DeployPhase, Plugin, RemoteExecutor } from '../types.js'
 
@@ -31,10 +31,11 @@ export const DEPLOY_USAGE = `Usage: airstack deploy <machine>... | '<pattern>' |
   --dry-run            sync + validate compose on the machine; do not start containers
   --force              recreate all services
   --prune              stop instances that were removed from the machine file (keeps their dirs)
-  --install            first-time setup: ${['base', 'harden', 'docker', 'rootless (if dev users)', 'verify'].join(', ')},
+  --install            first-time setup: base, harden, docker, rootless (if dev users), verify, reboot,
+                       then lock SSH to host.ssh.port (only if it answers after the reboot),
                        write /etc/airstack/machine.yaml, then deploy
   --install --step <s> run one setup step only (${SETUP_STEPS.join(', ')})
-  --finalize           with --step harden: close port 22 (set host.ssh.port to the hardened port first)
+  --finalize           with --step harden: close the bootstrap port by hand (--install does it itself)
   -v, --verbose        phase-by-phase output
 
 Quote patterns: airstack deploy 'airstack-*'  (zsh aborts or expands unquoted globs).`
@@ -143,26 +144,8 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
 
   // ── install / marker gate ──
   if (f.install) {
-    const steps: SetupStep[] = f.step
-      ? [f.step as SetupStep]
-      : ['base', 'harden', 'docker', ...(m.host.users.dev.length ? (['rootless'] as SetupStep[]) : []), 'verify']
-    for (const step of steps) {
-      out.info(`${name}: setup ${step} …`)
-      try {
-        await runVpsSetup(step, {
-          config: machineUnit.config,
-          projectRoot: m.dir ?? fleet.root,
-          sharedPaths: [fleet.root, CORE_ROOT],
-          persistSecret: (k, v) => upsertSecret(fleet.root, name, k, v),
-          flags: { finalize: f.finalize },
-        })
-        out.ok(`${name}: setup ${step}`)
-      } catch (e) {
-        out.fail(`${name}: setup ${step}: ${e instanceof SetupFailed ? e.message : String(e)}`)
-        return { ok: false, note: `setup ${step} failed` }
-      }
-    }
-    if (f.step) return { ok: true, note: `setup ${f.step} done` }
+    const r = await runInstall(fleet, m, machineUnit, { step: f.step, finalize: f.finalize }, out)
+    if (!r.ok || f.step) return r
     if (!(await writeMarker(remote!, markerYaml(fleet, m, version)))) {
       out.fail(`${name}: could not write /etc/airstack/machine.yaml`)
       return { ok: false, note: 'marker write failed' }

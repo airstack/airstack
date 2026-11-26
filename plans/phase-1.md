@@ -143,7 +143,9 @@ host:
   hostname: airstack-test1
   ip: ${TEST1_IP}
   timezone: America/Los_Angeles
-  ssh: { user: adminroot, port: 222, key: ~/.ssh/id_ed25519, expose: public }   # expose: public|tunnel, tunnelHostname
+  ssh: { user: adminroot, port: 222, key: ~/.ssh/id_ed25519, expose: public }   # the FINISHED machine; expose: public|tunnel
+  # a fresh box answers on ssh.bootstrapPort (default 22) as ssh.bootstrapUser (default root); --install
+  # moves SSH to ssh.port, reboots, and closes the bootstrap port only if ssh.port answers after the reboot
   users:
     sudo: adminroot
     stack: stackroot          # was APP_USER

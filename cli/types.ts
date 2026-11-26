@@ -23,6 +23,8 @@ export interface HostConfig {
   brewOwner: string
   /* SSH port after hardening is complete */
   sshHardenedPort: number
+  /* Port a fresh box answers on before harden (airstack: host.ssh.bootstrapPort; default 22) */
+  sshBootstrapPort?: number
   /* How SSH is reached after lockdown:
    *   'public' — SSH port stays open to the internet (direct connections)
    *   'tunnel' — external SSH port is closed; connections route through a

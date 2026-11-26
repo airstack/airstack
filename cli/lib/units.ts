@@ -78,6 +78,7 @@ function legacyHost(machine: Machine, runUser: string): LegacyHost {
     devUsers: h.users.dev,
     brewOwner: h.users.brewOwner,
     sshHardenedPort: h.ssh.hardenedPort,
+    sshBootstrapPort: h.ssh.bootstrapPort,
     sshExpose: h.ssh.expose,
     sshTunnelHostname: h.ssh.tunnelHostname,
   }

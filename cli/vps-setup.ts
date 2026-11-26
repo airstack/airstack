@@ -3,7 +3,7 @@
  *
  * Steps:
  *   base        packages, hostname, users (admin, stack owner, dev users)
- *   harden      UFW, SSH, swap, fail2ban, sysctl (moves SSH to host.ssh.hardenedPort)
+ *   harden      UFW, SSH, swap, fail2ban, sysctl (opens host.ssh.port; --finalize closes the bootstrap port)
  *   reboot      reboot and wait for SSH
  *   docker      Docker CE + daemon hardening (sysbox via stack sysbox: true)
  *   rootless    rootless Docker for each dev user (host.users.dev)
@@ -175,6 +175,7 @@ async function cmdHarden() {
     envVars: {
       SUDO_USER: sudoUser,
       SSH_HARDENED_PORT: String(hardenedPort),
+      SSH_BOOTSTRAP_PORT: String(config.host.sshBootstrapPort ?? 22),
       FINALIZE: flags.finalize ? 'true' : '',
     },
   })
@@ -202,22 +203,29 @@ async function cmdReboot() {
   console.log(`\n\x1b[1mVPS Reboot\x1b[0m`)
   console.log(`  Target: ${ssh.user}@${ssh.host}:${ssh.port}`)
 
-  await remote.run('sudo reboot || true')
-  console.log('\x1b[33mReboot initiated. Waiting for reconnection...\x1b[0m')
+  // "Back" must mean a NEW boot: compare the kernel boot id, or a box that has not gone down yet
+  // looks like it came back instantly.
+  const bootId = async () => (await remote.run('cat /proc/sys/kernel/random/boot_id 2>/dev/null')).stdout.trim()
+  const before = await bootId()
+  if (!before) fail('could not read the boot id before rebooting')
 
-  const maxWait = 120
+  await remote.run('sudo systemd-run --on-active=2 --timer-property=AccuracySec=100ms /bin/systemctl reboot >/dev/null 2>&1 || (sleep 1; sudo reboot) >/dev/null 2>&1 &')
+  console.log('\x1b[33mReboot scheduled. Waiting for the machine to come back...\x1b[0m')
+
+  const maxWait = 300
   for (let elapsed = 0; elapsed < maxWait; elapsed += 5) {
     await new Promise((resolve) => setTimeout(resolve, 5000))
-    const reachable = await testSSHConnection(ssh, 5)
-    if (reachable) {
-      console.log(`\n\x1b[32mVPS back online after ~${elapsed + 5}s\x1b[0m`)
-      console.log(`\nNext step: airstack deploy <machine> --install --step docker`)
+    if (!(await testSSHConnection(ssh, 5))) {
+      process.stdout.write(`  waiting... (${elapsed + 5}s/${maxWait}s)\r`)
+      continue
+    }
+    const now = await bootId()
+    if (now && now !== before) {
+      console.log(`\n\x1b[32mBack online after ~${elapsed + 5}s (new boot)\x1b[0m`)
       return
     }
-    process.stdout.write(`  waiting... (${elapsed + 5}s/${maxWait}s)\r`)
   }
-
-  fail(`VPS did not come back within ${maxWait}s`)
+  fail(`no new boot answered SSH on port ${ssh.port} within ${maxWait}s`)
 }
 
 // ── docker ──────────────────────────────────────────────────────────────────

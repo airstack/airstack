@@ -37,7 +37,7 @@ fi
 # ── Phase 2: Finalize ───────────────────────────────────────────────────────
 
 if [ "${FINALIZE}" = "true" ]; then
-  echo "==> Finalizing SSH hardening (closing port 22)..."
+  echo "==> Finalizing SSH hardening (closing port ${SSH_BOOTSTRAP_PORT:-22})..."
 
   # Update socket to hardened port only
   CURRENT_STEP="socket override (finalize)"
@@ -60,15 +60,18 @@ EOF
   systemctl daemon-reload
   systemctl restart ssh.socket
 
-  # Remove port 22 from UFW
-  CURRENT_STEP="UFW remove port 22"
-  ufw delete allow 22/tcp 2>/dev/null || true
+  # Remove the bootstrap port (default 22) from UFW
+  BOOT_PORT="${SSH_BOOTSTRAP_PORT:-22}"
+  CURRENT_STEP="UFW remove port ${BOOT_PORT}"
+  if [ "${BOOT_PORT}" != "${SSH_HARDENED_PORT}" ]; then
+    ufw delete allow "${BOOT_PORT}/tcp" 2>/dev/null || true
+  fi
 
-  # Verify port 22 is no longer listening
-  if ss -tlnp | grep -q ':22 '; then
-    echo "WARNING: Port 22 still appears to be listening" >&2
+  # Verify the bootstrap port is no longer listening
+  if ss -tlnH | awk '{print $4}' | grep -qE "[:.]${BOOT_PORT}$"; then
+    echo "WARNING: Port ${BOOT_PORT} still appears to be listening" >&2
   else
-    echo "  Port 22 closed"
+    echo "  Port ${BOOT_PORT} closed"
   fi
 
   echo "  AllowUsers restricted to: ${SUDO_USER}"

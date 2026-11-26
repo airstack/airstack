@@ -60,7 +60,8 @@ export interface HostConfig {
   hostname: string
   ip: string
   timezone: string
-  ssh: { user: string; port: number; key: string; hardenedPort: number; expose: 'public' | 'tunnel'; tunnelHostname: string }
+  /** port/user = the FINISHED machine; bootstrap* = a fresh box before setup (used only by --install). */
+  ssh: { user: string; port: number; key: string; hardenedPort: number; bootstrapPort: number; bootstrapUser: string; expose: 'public' | 'tunnel'; tunnelHostname: string }
   users: { sudo: string; stack: string; dev: string[]; brewOwner: string }
   dockerSubnet: string
 }
@@ -472,7 +473,8 @@ function normalizeHost(h: Plain, machine: string): HostConfig {
   const ssh = (h.ssh ?? {}) as Plain
   const users = (h.users ?? {}) as Plain
   const sudo = String(users.sudo ?? 'adminuser')
-  const port = Number(ssh.port ?? 22)
+  // ssh.port is the port of the finished machine (default 222); a fresh box answers on bootstrapPort.
+  const port = Number(ssh.port ?? 222)
   return {
     hostname: String(h.hostname ?? machine),
     ip: String(h.ip ?? ''),
@@ -481,7 +483,9 @@ function normalizeHost(h: Plain, machine: string): HostConfig {
       user: String(ssh.user ?? sudo),
       port,
       key: String(ssh.key ?? ''),
-      hardenedPort: Number(ssh.hardenedPort ?? (port !== 22 ? port : 222)),
+      hardenedPort: port,
+      bootstrapPort: Number(ssh.bootstrapPort ?? 22),
+      bootstrapUser: String(ssh.bootstrapUser ?? 'root'),
       expose: String(ssh.expose ?? 'public') === 'tunnel' ? 'tunnel' : 'public',
       tunnelHostname: String(ssh.tunnelHostname ?? ''),
     },

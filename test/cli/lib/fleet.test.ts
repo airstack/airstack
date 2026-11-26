@@ -84,6 +84,13 @@ describe('machine loading', () => {
     expect(inst.origins.get('installDir')).toBe('default')
   })
 
+  it('ssh: port is the finished machine (default 222); a fresh box answers on the bootstrap settings', () => {
+    const ops = loadMachine(loadFleet(root), 'ops2').host.ssh
+    expect(ops).toMatchObject({ port: 222, hardenedPort: 222, bootstrapPort: 22, bootstrapUser: 'root', user: 'adminroot' })
+    const t1 = loadMachine(loadFleet(root), 'airstack-test1').host.ssh
+    expect(t1).toMatchObject({ port: 22, hardenedPort: 22 }) // port 22 = SSH does not move
+  })
+
   it('machine root defaults to /srv/airstack', () => {
     const m = loadMachine(loadFleet(root), 'ops2')
     expect(m.root).toBe('/srv/airstack')
