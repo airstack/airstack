@@ -1,7 +1,7 @@
 # airstack — release 1 (overnight run, 2026-11-26)
 
 Mandate from the owner: work through items 1–3 below without stopping for input, test everything on
-`airstack-test1`, and leave airstack release-ready for the public. HOLD item 4 (moving the owner's production box ontoairstack): the owner does that with us tomorrow. Never touch the production box tonight.
+`airstack-test1`, and leave airstack release-ready for the public. HOLD item 4 (moving the owner's production box onto airstack): the owner does that with us tomorrow. Never touch the production box tonight.
 
 Test machine: `airstack-test1` (OrbStack VM, locked down: `ssh -p 222 adminroot@airstack-test1.orb.local`,
 `orb shell` is the fallback). Dev fleet: `../airstack-fleet-dev` (machine `airstack-test1`: cliproxy +
