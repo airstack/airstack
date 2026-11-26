@@ -18,34 +18,45 @@ leak scan before commits). Commit + push to airstack/airstack as work lands.
 - [x] Tests + live test on airstack-test1 (pass path live; stop → flag → deploy restarts → flag clears, live with a fake FAIL; refuse path by unit test: no way to make a route public without the dashboard).
 
 ## 2. Phase 2 — config history and sync (plans/phase-1.md §0 row 2)
-- [ ] `/srv/airstack/.stack/.git` (stackroot, 700): managed files per unit (rendered + seeded), live
-      edits auto-committed (`box edit`), deploy commits `deploy <fleet sha>`.
-- [ ] File modes per plugin: rendered / seeded (cliproxy config.yaml) / state (auths, data, logs).
-- [ ] `incoming/<source>` branch + three-way merge in a separate worktree; `.stack-base` in
-      `.airstack/deploy/<machine>/`; drift guard (refuse to overwrite box edits; `--force`).
-- [ ] `airstack pull <machine>`: box → `.airstack/deploy/<machine>/` + redacted diff.
-- [ ] Redaction library (secret values from the secrets file, plugin redactors incl. cliproxy
-      config.yaml keys, generic key shapes in comments too); short hash markers.
-- [ ] Tests + live test (edit config.yaml on the box → pull shows redacted diff; deploy refuses to
-      clobber; rollback).
+- [x] `<root>/.stack` git store (root 700; it holds live files with secrets and dev-user files, so
+      root, not stackroot): work tree mirrors managed files per unit (`machine/`, `stacks/<inst>/`).
+      Box edits are committed on every snapshot / drift check; deploys commit `deploy <unit> (fleet <sha>)`;
+      `refs/airstack/deployed/<slot>` marks the last deploy.
+- [x] File modes: rendered (staged tree, deploy overwrites), tracked (plugin `tracked:`; cliproxy
+      config.yaml + usage-server.env), state (never tracked). List in `.stack-config/managed.json`.
+- [x] Drift guard, as a three-way compare instead of a merge: per file deploy writes, live vs
+      incoming vs last deploy vs pulled base (`.airstack/deploy/<machine>/.stack-base`). Refuse unless
+      `--force`. DECISION: no automatic merge into rendered files — a merged result cannot be
+      reproduced from the fleet and the next deploy would drop it; the agent promotes edits into
+      templates after `pull` instead. No `incoming/` branch needed for that.
+- [x] `airstack pull <machine>`: snapshot on the box, copy to `.airstack/pull/<machine>/`, write
+      `.stack-base`, redacted diff fleet render → machine; box-owned files diff against the last pull.
+- [x] Redaction library `cli/lib/redact/` (secret values, plugin rules, generic keys + shapes, also in
+      comments; `[redacted:<label>:<sha6>]`). Node side gets secret values via `/etc/airstack/redact.json`.
+- [x] Tests (unit + real git) + live test on airstack-test1: box edit → `machine config diff` →
+      deploy refused → pull shows the diff → deploy allowed → rollback both ways.
 
 ## 3. Phase 3 — node CLI + binary on nodes
-- [ ] `bun build --compile` release builds (linux x64/arm64, darwin arm64), embedded built-in
-      plugins/templates/stacks; `install.sh` (controller: user-local bin; node: via deploy only).
-- [ ] deploy pushes the pinned binary to nodes (checksum, /usr/local/lib/airstack/versions/<v>,
-      /usr/local/bin/airstack symlink); `update` / `install <v>` / `versions` / `fleet update` /
-      `fleet install <v> <m>`; node source updates off by default.
-- [ ] Node verbs: `airstack machine status|check|report|logs|config read|config diff|history`,
-      repair verbs `restart|snapshot|apply|rollback` (airstack-admin group), sudo helper for reads.
-- [ ] `airstack doctor [--fix]` (local + `--fleet`), `airstack status` local/fleet.
-- [ ] Shorter daily report (owner: still too much info): checks only problems + a one-line ✅
-      summary; full detail via `airstack machine report --full`.
+- [x] Release builds (`devutils/release/build.ts`, 4 targets, SHA256SUMS); built-in plugins bundled
+      statically, core files shipped next to `bin/`; `install.sh` (controller only, user-local).
+- [x] deploy / `fleet update` / `fleet install <v>` push the build (sha256-checked, versions dir,
+      symlink, keep 3); controller `versions` / `update` / `install <v>`; nodes refuse unless
+      `update.allowSourceUpdate: true` in the marker. Source checkouts build the node binary on demand.
+- [x] Node verbs `airstack machine …` (all listed), sudo re-exec, `airstack-admin` group +
+      visudo-checked sudoers rule (`host.users.admins`).
+- [x] `airstack doctor [--fix]` (controller + fleet repo + `doctor <machine>|--all` over SSH; node).
+      `airstack status` (fleet) unchanged; node status is `airstack machine status`.
+- [x] Shorter daily report: problems + "✅ N passed: names"; `--full` / `REPORT_FULL=true` for all.
 
 ## Release readiness
-- [ ] Phase-1 leftovers: fleet check port collisions + rootless/network checks; box compose file
-      name; host-status scripts not copied into every unit.
-- [ ] README (what/why/quickstart), docs for every verb, example fleet (docs or `airstack init`),
-      LICENSE check, CHANGELOG, version 0.1.0 → release notes, CI workflow (tests + leak scan).
-- [ ] Full end-to-end run on airstack-test1 from a clean state where feasible.
+- [x] fleet check port collisions + rootless/network checks (`cli/lib/fleet-lint.ts`, also in deploy).
+- [x] Host-status scripts ship only to units with host_ crons (`deployExclude`).
+- [x] DECISION: box compose file stays `docker-compose.yml` (renaming breaks running machines and the
+      host scripts; no user-visible gain).
+- [x] CHANGELOG, CI + release workflows (parked in `devutils/github-workflows/`: the push token has no
+      workflow scope).
+- [ ] README, docs for every verb, example fleet + `airstack init` (in progress).
+- [ ] LICENSE: BSL 1.1 with "Additional Use Grant: None" forbids production use by others. Owner decides.
+- [ ] End-to-end from a clean VM.
 
 ## 4. HOLD — production-box migration (tomorrow, with the owner)
