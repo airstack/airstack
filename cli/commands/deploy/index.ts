@@ -23,6 +23,7 @@ import type { RemoteExecutor } from '../../types.js'
 import { DEPLOY_USAGE, parseFlags, type Flags } from './flags.js'
 import { prepareNode, type NodePrep } from './node-prep.js'
 import { deployUnit, pruneInstance } from './unit.js'
+import { adoptMachine } from './adopt.js'
 
 export { DEPLOY_USAGE } from './flags.js'
 
@@ -96,6 +97,8 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
     }
     out.ok(`${name}: wrote /etc/airstack/machine.yaml`)
   }
+
+  if (f.adopt) return adoptMachine(remote!, fleet, m, f, version, out)
 
   let prep: NodePrep | undefined
   if (remote) {
