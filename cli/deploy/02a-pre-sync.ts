@@ -9,6 +9,7 @@
  */
 
 import type { DeployContext } from '../types.js'
+import { DEFAULT_MANIFEST_DIR } from '../lib/paths.js'
 import { findLocalScriptsMissingExecute, diffHostFiles, isValidHostFilePath } from '../lib/registered-files.js'
 
 export async function preSync(ctx: DeployContext): Promise<void> {
@@ -34,7 +35,7 @@ export async function preSync(ctx: DeployContext): Promise<void> {
     const remoteManifest = JSON.parse(remoteJson.stdout.trim())
     const remoteHostFiles: string[] = remoteManifest.hostFiles || []
     const orphans = diffHostFiles(remoteHostFiles, ctx.registeredFiles.hostFiles)
-    const manifestDir = String((ctx.config.stack as any).manifestDir || '/etc/stacks')
+    const manifestDir = String((ctx.config.stack as any).manifestDir || DEFAULT_MANIFEST_DIR)
     for (const orphan of orphans) {
       if (!isValidHostFilePath(orphan, [manifestDir])) {
         ctx.log.warn(`[pre-sync] Skipping suspicious orphan path: ${orphan}`)

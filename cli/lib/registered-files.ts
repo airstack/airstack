@@ -70,11 +70,11 @@ export function diffHostFiles(
 // ── Shell safety helpers ────────────────────────────────────────────────────
 
 /** Default allowlist pattern for host file paths managed by the deploy pipeline. */
-const HOST_FILE_PATTERN = /^\/etc\/(cron\.d|logrotate\.d|stacks)\/[a-zA-Z0-9_.\-]+$/
+const HOST_FILE_PATTERN = /^\/etc\/(cron\.d|logrotate\.d|stacks|airstack\/stacks)\/[a-zA-Z0-9_.\-]+$/
 
 /**
  * Validate a host file path is safe for use in shell commands.
- * Allows paths under /etc/cron.d/, /etc/logrotate.d/, /etc/stacks/,
+ * Allows paths under /etc/cron.d/, /etc/logrotate.d/, /etc/airstack/stacks/, legacy /etc/stacks/,
  * plus any custom manifest directory.
  */
 export function isValidHostFilePath(path: string, extraDirs: string[] = []): boolean {

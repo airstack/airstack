@@ -1,5 +1,5 @@
 #!/bin/bash
-# stacks.sh — Cross-stack discovery from /etc/stacks/ manifests.
+# stacks.sh — Cross-stack discovery from /etc/airstack/stacks/ manifests (one per deploy unit).
 #
 # Requires: STACKS_MANIFEST_DIR set in environment (sourced from .env before this file).
 #

@@ -67,7 +67,7 @@ Published ports bind `127.0.0.1` by default (`daemon.json` `"ip"`).
 | `/srv/airstack/stacks/<instance>/` | stacks run by the stack owner (root daemon) | stack owner, 750 |
 | `/home/<devuser>/airstack/<instance>/` | stacks run by a dev user (rootless daemon) | that dev user, 750 |
 | `/etc/airstack/machine.yaml` | node marker: machine, roles, paths, deployed instances | root, 644 |
-| `/etc/cron.d/<project>_*`, `/etc/stacks/<project>.env` | crons and per-instance manifests | root, 644 |
+| `/etc/cron.d/<project>_*`, `/etc/airstack/stacks/<project>.env` | crons and per-instance manifests | root, 644 |
 
 `/srv` is the filesystem-standard place for data a host serves; `/home` stays for people. Deploy
 syncs as the admin, then `chown -R`s each unit to its run user. The stack owner's own home is

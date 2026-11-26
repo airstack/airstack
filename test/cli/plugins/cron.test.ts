@@ -159,7 +159,7 @@ describe('cron plugin: pre-stage hook registers host files and script excludes',
     expect(ctx.registeredFiles.hostFiles).toContain('/etc/cron.d/myproject_myplugin_session_prune')
   })
 
-  it('registers /etc/stacks/{projectName}.env', async () => {
+  it('registers /etc/airstack/stacks/{projectName}.env', async () => {
     const stack = makeStackWithCron(`
     crons:
       backup: "0 3 * * *"
@@ -169,7 +169,7 @@ describe('cron plugin: pre-stage hook registers host files and script excludes',
     const raw = loadConfig(root).plugins['cron']
     await register(null).hooks!['pre-stage']!(ctx, raw)
 
-    expect(ctx.registeredFiles.hostFiles).toContain('/etc/stacks/myproject.env')
+    expect(ctx.registeredFiles.hostFiles).toContain('/etc/airstack/stacks/myproject.env')
   })
 
   it('registers /etc/logrotate.d/{projectName}', async () => {
@@ -194,7 +194,7 @@ describe('cron plugin: pre-stage hook registers host files and script excludes',
     const raw = loadConfig(root).plugins['cron']
     await register(null).hooks!['pre-stage']!(ctx, raw)
 
-    expect(ctx.registeredFiles.hostFiles).toContain('/etc/stacks/myproject.env')
+    expect(ctx.registeredFiles.hostFiles).toContain('/etc/airstack/stacks/myproject.env')
     expect(ctx.registeredFiles.hostFiles).toContain('/etc/logrotate.d/myproject')
     // No cron.d entries since no crons defined
     expect(ctx.registeredFiles.hostFiles.filter(f => f.includes('/etc/cron.d/'))).toHaveLength(0)

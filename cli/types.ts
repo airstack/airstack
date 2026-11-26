@@ -271,7 +271,7 @@ export interface DeployContext {
   compose: ComposeState
   /** Deploy report — accumulated during deploy, rendered at end */
   report: ReportState
-  /** Stack manifest — written to {stack.manifestDir}/{project}.env on VPS (default /etc/stacks/).
+  /** Stack manifest — written to {stack.manifestDir}/{project}.env on VPS (default /etc/airstack/stacks/).
    *  Core populates destination + base entries in pre-stage.
    *  Plugins add entries during pre-stage. Stage writes the file. */
   manifest: {

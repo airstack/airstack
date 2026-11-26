@@ -6,6 +6,7 @@
  */
 
 import { resolve } from 'node:path'
+import { DEFAULT_MANIFEST_DIR } from '../lib/paths.js'
 import { assertSafeForSecrets } from '../lib/git-safety.js'
 import type { DeployContext } from '../types.js'
 
@@ -40,7 +41,7 @@ export async function preStage(ctx: DeployContext): Promise<void> {
   const configDir = `${installDir}/.stack-config`
   const stateDir = `${installDir}/.stack-state`
 
-  const manifestDir = String((config.stack as any).manifestDir || '/etc/stacks')
+  const manifestDir = String((config.stack as any).manifestDir || DEFAULT_MANIFEST_DIR)
   ctx.manifest.destination = `${manifestDir}/${projectName}.env`
   ctx.manifest.entries.PROJECT_NAME = projectName
   ctx.manifest.entries.INSTALL_DIR = installDir

@@ -19,6 +19,7 @@ import { Logger } from '../lib/logger.js'
 import { composeCommand } from '../lib/compose.js'
 import { markerYaml, readMarker, writeMarker, type MarkerStack } from '../lib/marker.js'
 import { upsertSecret } from '../lib/secrets-writer.js'
+import { LEGACY_MANIFEST_DIR } from '../lib/paths.js'
 import { runVpsSetup, SETUP_STEPS, SetupFailed, type SetupStep } from '../vps-setup.js'
 import { EXIT, type Output } from '../lib/output.js'
 import type { DeployContext, DeployPhase, Plugin, RemoteExecutor } from '../types.js'
@@ -204,6 +205,9 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
 
   if (!remote || f.dryRun) return failed ? { ok: false, note: `${failed} unit(s) failed` } : { ok: true, note: f.stage ? 'staged' : 'dry-run ok' }
 
+  // stack-cli kept manifests in /etc/stacks; orphan cleanup empties it, then drop the dir (only if empty).
+  await remote.run(`sudo rmdir ${LEGACY_MANIFEST_DIR} 2>/dev/null || true`)
+
   // ── orphans, marker ──
   const current = new Set(m.instances.map((i) => i.name))
   const orphans = Object.entries(previous).filter(([inst]) => !current.has(inst))
@@ -281,7 +285,7 @@ async function pruneInstance(remote: RemoteExecutor, s: MarkerStack): Promise<bo
   if (!/^[a-z0-9][a-z0-9_-]*$/.test(s.composeProject) || !/^\/[\w./-]+$/.test(s.installDir) || !/^[a-z_][a-z0-9_-]*$/.test(s.user)) return false
   const ctx = { config: { host: { appUser: s.user }, stack: { installDir: s.installDir, projectName: s.composeProject, runUserKind: s.userKind } } } as unknown as DeployContext
   const down = await remote.run(`${composeCommand(ctx, 'down')} 2>&1`)
-  await remote.run(`sudo rm -f /etc/cron.d/${s.composeProject}_* /etc/logrotate.d/${s.composeProject} /etc/stacks/${s.composeProject}.env`)
+  await remote.run(`sudo rm -f /etc/cron.d/${s.composeProject}_* /etc/logrotate.d/${s.composeProject} /etc/airstack/stacks/${s.composeProject}.env /etc/stacks/${s.composeProject}.env`)
   return down.exitCode === 0
 }
 

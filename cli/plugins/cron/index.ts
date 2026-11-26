@@ -16,6 +16,7 @@
 //   post-sync — lock down crons/env.d on the VPS (owner + mode)
 
 import type { Plugin, DeployContext } from '../../types.js'
+import { DEFAULT_MANIFEST_DIR } from '../../lib/paths.js'
 import { parseScheduleTime as _parseScheduleTime } from '../../lib/schedule-time.js'
 import { mkdirSync, writeFileSync, chmodSync, readFileSync, cpSync, readdirSync, existsSync } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
@@ -166,7 +167,7 @@ async function preStageHook(ctx: DeployContext, raw: unknown): Promise<void> {
   }
 
   // Register stack manifest and logrotate config
-  const manifestDir = String((ctx.config.stack as any).manifestDir || '/etc/stacks')
+  const manifestDir = String((ctx.config.stack as any).manifestDir || DEFAULT_MANIFEST_DIR)
   ctx.registeredFiles.hostFiles.push(`${manifestDir}/${projectName}.env`)
   ctx.registeredFiles.hostFiles.push(`/etc/logrotate.d/${projectName}`)
 

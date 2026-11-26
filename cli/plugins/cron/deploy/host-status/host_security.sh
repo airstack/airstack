@@ -99,7 +99,7 @@ elif [[ -n "${STATE_DIR:-}" ]]; then SEC_STATE="${STATE_DIR}/host-health"
 else SEC_STATE=/var/lib/host-security; fi
 FIX="${SECURITY_FIXTURE_DIR:-}"
 CRON_DIR="${SECURITY_CRON_DIR:-/etc/cron.d}"
-MANIFEST_DIR="${STACKS_MANIFEST_DIR:-/etc/stacks}"
+MANIFEST_DIR="${STACKS_MANIFEST_DIR:-/etc/airstack/stacks}"
 NOW="${SECURITY_NOW:-$(date +%s)}"
 
 ALL_CHECKS="firewall tailscale reachability docker tunnel cloudflared ssh sshsources accounts persistence secrets outbound processes updates"

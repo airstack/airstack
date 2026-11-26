@@ -42,7 +42,7 @@ export async function postSync(ctx: DeployContext): Promise<void> {
     )
   }
 
-  // 1b. Promote stack manifest to its destination (default /etc/stacks/, configurable via stack.manifestDir)
+  // 1b. Promote stack manifest to its destination (default /etc/airstack/stacks/, configurable via stack.manifestDir)
   const manifestSrc = `${installDir}/etc/stacks`
   const manifestDest = ctx.manifest.destination
   if (manifestDest) {

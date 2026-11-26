@@ -47,7 +47,7 @@ function ctxWith(run: (c: string) => { stdout?: string; exitCode?: number }): { 
 describe('file permission hardening', () => {
   it('core post-sync closes installDir to other users and reads it with sudo', async () => {
     const { ctx, cmds } = ctxWith((c) => ({ stdout: c.includes('test -f') ? 'ok' : c.includes('test -d') ? 'yes' : '' }))
-    ctx.manifest.destination = '/etc/stacks/myproject.env'
+    ctx.manifest.destination = '/etc/airstack/stacks/myproject.env'
     await postSync(ctx)
     // globs over installDir must expand inside sudo, not in the unprivileged ssh shell
     const copies = cmds.filter(c => /\bcp\b/.test(c))
