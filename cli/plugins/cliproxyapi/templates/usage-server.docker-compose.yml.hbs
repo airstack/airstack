@@ -1,0 +1,26 @@
+  # ── usage-server (token usage + cost dashboard) ───────────────
+  # simple10/usage-server. Reads the proxy plugin's spool and Claude Code
+  # transcripts (read-only). Loopback only (127.0.0.1:{{plugins.cliproxyapi.usageServer.port}}); the proxy plugin bridges the
+  # dashboard into the management panel. The proxy does not depend on it.
+  # The image is built ON the VPS from the pinned git tag by the cliproxyapi plugin
+  # (build hook) — never pulled. Pin: cli/plugins/cliproxyapi/usage-server-pin.ts
+  usage-server:
+    image: usage-server:{{plugins.cliproxyapi.usageServer.version}}
+    container_name: {{stack.projectName}}-usage-server
+    restart: unless-stopped
+    network_mode: host
+    user: "{{plugins.cliproxyapi.usageServer.uid}}:{{plugins.cliproxyapi.usageServer.gid}}"
+    env_file: [{{stack.installDir}}/.usage-server/usage-server.env]
+    environment:
+      - USAGE_HOST=127.0.0.1
+      - USAGE_PORT={{plugins.cliproxyapi.usageServer.port}}
+      - USAGE_CPA_URL=http://127.0.0.1:8317
+    volumes:
+      - {{stack.installDir}}/.cliproxyapi/usage-spool:/spool:ro
+      - {{plugins.cliproxyapi.usageServer.transcriptsDir}}:/transcripts/claude:ro
+      - {{stack.installDir}}/.usage-server/data:/data
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits:
+          memory: 512M

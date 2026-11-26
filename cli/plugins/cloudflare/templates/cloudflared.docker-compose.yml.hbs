@@ -1,0 +1,28 @@
+  # ── Cloudflare Tunnel (per-stack sidecar) ─────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.7
+    container_name: {{stack.projectName}}-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN={{stack.cloudflared.tunnelToken}}
+{{#if stack.cloudflared.hostNetwork}}
+    # Host networking — tunnel ingress routes reach host processes directly,
+    # e.g. http://localhost:4040 for a service listening on 127.0.0.1 of the host.
+    network_mode: host
+{{else}}
+    # Bridge network — tunnel ingress routes reach other services by their
+    # Docker container name (e.g. http://my-service:8080).
+    # Static IP so any trustedProxies config stays stable.
+    networks:
+      stack-net:
+        ipv4_address: 10.200.0.100
+{{/if}}
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M

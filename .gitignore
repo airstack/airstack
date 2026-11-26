@@ -1,0 +1,19 @@
+.DS_Store
+node_modules/
+coverage/
+dist/
+tmp/
+
+# Fleet state (secrets, staged deploy trees, logs, reports). This repo is the airstack core:
+# real fleet config lives in a separate fleet repo and never here. Test fleets go under
+# test/fixtures/ with documentation-only values.
+.airstack/
+.env
+.env.*
+
+# Transitional (stack-cli layout, removed once the phase 1 loader lands)
+stack.yml
+.deploy/
+.deploy-logs/
+deploy-report.md
+backups/

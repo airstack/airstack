@@ -1,0 +1,27 @@
+  # ── CLIProxyAPI (router-for-me/CLIProxyAPI) ───────────────────
+  # Host networking so the source IP tells the app who is calling:
+  #   cloudflared (host network) → 127.0.0.1 → "local"  → management UI allowed
+  #   tailnet peers              → 100.x     → "remote" → API only (allow-remote: false)
+  # The public interface is closed by UFW; the tailnet port is opened by the
+  # tailscale plugin (plugins.tailscale.ports).
+  # config.yaml + auths/ live in {{stack.installDir}}/.cliproxyapi — VPS-only, never synced.
+  cli-proxy-api:
+    image: {{#if plugins.cliproxyapi.image}}{{plugins.cliproxyapi.image}}{{else}}eceasy/cli-proxy-api:v8.0.80{{/if}}
+    container_name: {{stack.projectName}}-cli-proxy-api
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ={{host.timezone}}
+    volumes:
+      - {{stack.installDir}}/.cliproxyapi/config.yaml:/CLIProxyAPI/config.yaml
+      - {{stack.installDir}}/.cliproxyapi/auths:/root/.cli-proxy-api
+      - {{stack.installDir}}/.cliproxyapi/logs:/CLIProxyAPI/logs
+{{#if plugins.cliproxyapi.usageServer}}
+      - {{stack.installDir}}/.cliproxyapi/plugins:/CLIProxyAPI/plugins:ro      # usage-server plugin (.so)
+      - {{stack.installDir}}/.cliproxyapi/usage-spool:/CLIProxyAPI/usage-spool  # usage-server spool
+{{/if}}
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits:
+          memory: {{#if plugins.cliproxyapi.memory}}{{plugins.cliproxyapi.memory}}{{else}}1G{{/if}}
