@@ -18,7 +18,10 @@ import { dirname, join } from 'node:path'
 import { listFiles, safeRelPath, type Managed } from '../lib/managed.js'
 import type { NodeUnit } from './units.js'
 
-const IDENT = ['-c', 'user.name=airstack', '-c', 'user.email=airstack@localhost', '-c', 'core.quotePath=false']
+const IDENT = ['-c', 'user.name=airstack', '-c', 'user.email=airstack@localhost', '-c', 'core.quotePath=false', '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false']
+// The store ignores the global and system git config: hooks, signing or aliases there must not
+// break (or change) snapshots.
+const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
 
 export interface LogEntry {
   sha: string
@@ -34,7 +37,7 @@ export class Store {
   }
 
   git(args: string[], input?: string): { out: string; err: string; code: number } {
-    const r = spawnSync('git', [...IDENT, '-C', this.dir, ...args], { encoding: 'utf-8', input, maxBuffer: 64 * 1024 * 1024 })
+    const r = spawnSync('git', [...IDENT, '-C', this.dir, ...args], { encoding: 'utf-8', input, env: GIT_ENV, maxBuffer: 64 * 1024 * 1024 })
     return { out: r.stdout ?? '', err: r.stderr ?? '', code: r.status ?? 1 }
   }
 
@@ -110,7 +113,7 @@ export class Store {
 
   /** Content of slot/path at a commit, or undefined when it is not there. */
   fileAt(rev: string, path: string): Buffer | undefined {
-    const r = spawnSync('git', ['-C', this.dir, 'show', `${rev}:${path}`], { maxBuffer: 64 * 1024 * 1024 })
+    const r = spawnSync('git', ['-C', this.dir, 'show', `${rev}:${path}`], { env: GIT_ENV, maxBuffer: 64 * 1024 * 1024 })
     return r.status === 0 ? r.stdout : undefined
   }
 
