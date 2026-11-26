@@ -3,7 +3,7 @@
 Parameters
 
 Licensor:             Joe Johnston
-Licensed Work:        OpenClawde VPS
+Licensed Work:        Airstack
 Additional Use Grant: None
 Change Date:          2030-02-16
 Change License:       Apache License, Version 2.0

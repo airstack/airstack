@@ -353,9 +353,13 @@ airstack ssh <machine> [-- <cmd>]        ctrl
 | new `cli/lib/output.ts` | `Logger` with colors | one formatter (`ok`/`warn`/`fail`/`->`), colors only on a TTY, deploy logs still to `.airstack/logs/` |
 | `bin/airstack.sh` | `bin/stack-cli.sh` | same launcher, renamed (install.sh + compiled binary are phase 4) |
 
-Fleet plugins may use only `import type` from airstack and get helpers through `ctx`. Reason: in
-phase 4 airstack becomes a `bun build --compile` binary, and a runtime import of core modules from a
-fleet file may not resolve. Verify this early (risk R1).
+**Plugin API module (from R1).** Fleet plugins `import { … } from 'airstack'` at runtime. The core
+registers `airstack` as a virtual module (`Bun.plugin` + `build.module('airstack', …)`, loader
+`object`) before loading any plugin; its exports are the stable plugin API (helpers, constants, the
+`Plugin` shape). Phase 1 adds `cli/plugin-api.ts` as that export surface and registers it in both the
+dev launcher and the compiled binary. Editor types for fleet repos: a generated
+`.airstack/types/airstack.d.ts` + tsconfig `paths` (phase 1 writes it on `fleet check`; publishing
+types to npm is later). Fleet npm deps resolve from the fleet repo's own `node_modules`.
 
 ## 9. Tests
 
@@ -372,9 +376,12 @@ fleet file may not resolve. Verify this early (risk R1).
 
 ## 10. Risks and open items
 
-- **R1 compiled binary + fleet plugins.** Confirm `bun build --compile` binaries can import fleet `.ts`
-  plugins at runtime and what they can import. If not, fleet plugins become script + manifest only.
-  Spike before the plugin-loader rewrite.
+- **R1 (resolved 2026-11-26, tested on airstack-test1, linux-arm64, no Bun installed).** A
+  `bun build --compile` binary (≈105 MB, embeds Bun 1.4.5) loads fleet `.ts` plugins at runtime:
+  type-only and relative imports work; `import 'airstack'` works once registered as a virtual module;
+  npm imports work when the fleet repo has `node_modules` (and fail with "Cannot find package"
+  otherwise); `BUN_BE_BUN=1 airstack …` runs the embedded Bun, so `bun install` in a fleet repo needs
+  no separate Bun. Fleet plugins stay TypeScript.
 - **R2 migrating the existing production box** (not in phase 1). Splitting its single `my-vps` project into
   `airstack` (cloudflared) + `cliproxy` renames containers, so it recreates them: a short proxy and
   tunnel outage. `composeProject: my-vps` on the cliproxy instance avoids renaming the proxy. Needs
