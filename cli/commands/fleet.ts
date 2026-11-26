@@ -15,8 +15,10 @@ export const FLEET_USAGE = `Usage: airstack fleet <command>
   show <machine>                resolved machine summary
   config <machine> [<instance>] merged config, each key tagged with where it came from
   check [<machine>...]          validate the fleet offline (refs, scopes, secrets, names, users)
+  plugin <machine> <cmd> [args] run a plugin command for that machine (e.g. cf-tunnel verify)
 
-Patterns ('airstack-*') and --all work where a machine list is accepted. Quote patterns.`
+Patterns ('airstack-*') and --all work where a machine list is accepted. Quote patterns.
+Container logs: airstack ssh <machine> -- sudo docker logs --tail 100 <container>`
 
 export async function fleetCommand(args: string[], fleetPath: string, out: Output): Promise<number> {
   const [sub, ...rest] = args
@@ -26,6 +28,7 @@ export async function fleetCommand(args: string[], fleetPath: string, out: Outpu
     case 'show': return show(fleet, rest, out)
     case 'config': return config(fleet, rest, out)
     case 'check': return check(fleet, rest, out)
+    case 'plugin': return pluginCmd(fleet, rest, out)
     case undefined: case '--help': case '-h':
       out.info(FLEET_USAGE)
       return sub ? EXIT.OK : EXIT.USAGE
@@ -158,4 +161,47 @@ function originOf(origins: Map<string, string>, key: string): string {
     k = cut > 0 ? k.slice(0, cut) : ''
   }
   return '?'
+}
+
+/** Run a plugin sub-command (cf-tunnel, backup, tailscale, …) against one machine's units. */
+async function pluginCmd(fleet: Fleet, args: string[], out: Output): Promise<number> {
+  const [name, cmdName, ...cmdArgs] = args
+  if (!name || !cmdName) {
+    out.fail('usage: airstack fleet plugin <machine> <command> [args]')
+    return EXIT.USAGE
+  }
+  const m = oneMachine(fleet, [name], out, 'airstack fleet plugin <machine> <command> [args]')
+  if (!m) return EXIT.USAGE
+  if (m.issues.some((i) => i.level === 'fail')) {
+    printIssues(fleet, m.issues, out)
+    return EXIT.FAIL
+  }
+  const { buildUnits } = await import('../lib/units.js')
+  const { loadPluginRef } = await import('../lib/fleet-check.js')
+  const { createRemoteExecutor, sshConfigFromHost } = await import('../lib/ssh.js')
+  const available: string[] = []
+  for (const unit of buildUnits(fleet, m)) {
+    for (const { ref, config } of unit.pluginRefs) {
+      const { plugin } = await loadPluginRef(fleet.root, ref, config)
+      for (const c of Object.keys(plugin.commands ?? {})) available.push(`${c} (${unit.name}: ${ref})`)
+      const cmd = plugin.commands?.[cmdName]
+      if (!cmd) continue
+      const ssh = sshConfigFromHost(unit.config.host)
+      await cmd.run(cmdArgs, {
+        config: unit.config,
+        ssh,
+        remote: ssh.host ? createRemoteExecutor(ssh) : undefined,
+        log: { error: console.error, warn: console.warn, info: console.log, debug: () => {} },
+        projectRoot: unit.projectRoot,
+        sharedPaths: unit.sharedPaths,
+        updateConfig: (dotPath: string) => {
+          throw new Error(`updateConfig(${dotPath}) is not supported for fleet machines yet: put the value in .airstack/secrets/${m.name}.jsonc`)
+        },
+      })
+      return EXIT.OK
+    }
+  }
+  out.fail(`no plugin command '${cmdName}' on ${m.name}`)
+  for (const a of available) out.info(`  ${a}`)
+  return EXIT.USAGE
 }

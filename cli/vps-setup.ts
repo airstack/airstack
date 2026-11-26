@@ -1,27 +1,24 @@
-#!/usr/bin/env bun
 /**
- * vps-setup.ts — VPS provisioning commands.
+ * vps-setup.ts — VPS provisioning steps, driven by `airstack deploy <machine> --install [--step <s>]`.
  *
- * Usage:
- *   stack-cli vps-setup base                # packages, hostname, users
- *   stack-cli vps-setup harden              # UFW, SSH, swap, fail2ban, sysctl
- *   stack-cli vps-setup harden --finalize   # close port 22, restrict SSH
- *   stack-cli vps-setup reboot              # reboot VPS, wait for reconnection
- *   stack-cli vps-setup docker              # Docker CE + daemon hardening
- *   stack-cli vps-setup docker --sysbox     # ...also install the Sysbox runtime
- *   stack-cli vps-setup rootless            # rootless Docker for each dev user (host.devUsers)
- *   stack-cli vps-setup brew-shim           # one Homebrew owner; read-only use for the rest
- *   stack-cli vps-setup tailscale           # install Tailscale + join the tailnet
- *   stack-cli vps-setup verify              # check everything is ready for deploy
- *   stack-cli vps-setup lockdown            # close external SSH, route via tunnel
+ * Steps:
+ *   base        packages, hostname, users (admin, stack owner, dev users)
+ *   harden      UFW, SSH, swap, fail2ban, sysctl (moves SSH to host.ssh.hardenedPort)
+ *   reboot      reboot and wait for SSH
+ *   docker      Docker CE + daemon hardening (sysbox via stack sysbox: true)
+ *   rootless    rootless Docker for each dev user (host.users.dev)
+ *   brew-shim   one Homebrew owner; read-only brew for other accounts
+ *   tailscale   install Tailscale + join the tailnet (machine plugin airstack/tailscale)
+ *   verify      check everything is ready for deploy
+ *   lockdown    close external SSH, route via the Cloudflare tunnel
+ *
+ * Failures throw SetupFailed (no process.exit), so a multi-machine run can report and continue.
  */
 
-import { resolve } from 'node:path'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
-import { loadConfig } from './lib/config.js'
+import type { Config } from './types.js'
 import { createRemoteExecutor, expandKey } from './lib/ssh.js'
-import { getSharedPaths } from './lib/resolve-file.js'
 import {
   detectDistro,
   resolveScript,
@@ -29,91 +26,79 @@ import {
   testSSHConnection,
 } from './lib/remote-script.js'
 
-const subcommand = process.argv[2] || ''
-const args = process.argv.slice(3)
+export class SetupFailed extends Error {}
 
-if (subcommand === '--help' || subcommand === '-h' || !subcommand) {
-  if (!subcommand) console.error('No subcommand given. Pick one:\n')
-  showHelp()
-  process.exit(subcommand ? 0 : 1)
+export const SETUP_STEPS = ['base', 'harden', 'reboot', 'docker', 'rootless', 'brew-shim', 'tailscale', 'verify', 'lockdown'] as const
+export type SetupStep = (typeof SETUP_STEPS)[number]
+
+export interface SetupFlags {
+  finalize?: boolean
+  sysbox?: boolean
+  undo?: boolean
+  force?: boolean
+  noLockRoot?: boolean
+  distro?: string
 }
 
-const flags = {
-  finalize: args.includes('--finalize'),
-  sysbox: args.includes('--sysbox'),
-  undo: args.includes('--undo'),
-  force: args.includes('--force'),
-  noLockRoot: args.includes('--no-lock-root'),
-  distro: getFlagValue(args, '--distro'),
+export interface SetupOptions {
+  config: Config
+  /** Where setup scripts are looked up (deploy/setup/<distro>/<step>.sh). */
+  projectRoot: string
+  sharedPaths: string[]
+  flags?: SetupFlags
+  /** Persist a generated secret (e.g. SUDO_USER_PASSWORD) to the machine's secrets file. */
+  persistSecret: (key: string, value: string) => void
 }
 
-const projectRoot = resolve(process.cwd())
-const sharedPaths = getSharedPaths()
+// Module state for the step functions below (set by runVpsSetup; one step at a time).
+let config: Config
+let projectRoot: string
+let sharedPaths: string[]
+let flags: Required<Omit<SetupFlags, 'distro'>> & { distro?: string }
+let ssh: { host: string; port: number; user: string; keyPath: string }
+let remote: ReturnType<typeof createRemoteExecutor>
+let persistSecret: (key: string, value: string) => void
 
-let config: ReturnType<typeof loadConfig>
-try {
-  config = loadConfig(projectRoot)
-} catch (e: any) {
-  console.error(`Config error: ${e.message}`)
-  process.exit(1)
+const fail = (msg: string): never => {
+  throw new SetupFailed(msg)
 }
 
-const ssh = {
-  host: config.host.ip,
-  port: config.host.sshPort,
-  user: config.host.sshUser,
-  keyPath: config.host.sshKey,
-}
+export async function runVpsSetup(step: SetupStep, opts: SetupOptions): Promise<void> {
+  config = opts.config
+  projectRoot = opts.projectRoot
+  sharedPaths = opts.sharedPaths
+  persistSecret = opts.persistSecret
+  const f = opts.flags ?? {}
+  flags = {
+    finalize: !!f.finalize, sysbox: !!f.sysbox, undo: !!f.undo, force: !!f.force, noLockRoot: !!f.noLockRoot,
+    distro: f.distro,
+  }
+  ssh = { host: config.host.ip, port: config.host.sshPort, user: config.host.sshUser, keyPath: config.host.sshKey }
+  if (!ssh.host) fail('No VPS configured (host.ip not set)')
+  remote = createRemoteExecutor(ssh)
 
-if (!ssh.host) {
-  console.error('No VPS configured (host.ip or SSH_IP not set)')
-  process.exit(1)
+  switch (step) {
+    case 'base': return cmdBase()
+    case 'harden': return cmdHarden()
+    case 'reboot': return cmdReboot()
+    case 'docker': return cmdDocker()
+    case 'tailscale': return cmdTailscale()
+    case 'rootless': return cmdRootless()
+    case 'brew-shim': return cmdBrewShim()
+    case 'verify': return cmdVerify()
+    case 'lockdown': return cmdLockdown()
+    default: fail(`Unknown setup step: ${step as string}`)
+  }
 }
-
-const remote = createRemoteExecutor(ssh)
 
 async function getDistro(): Promise<string> {
   if (flags.distro) return flags.distro
   return detectDistro(remote)
 }
 
-/** Sysbox is opt-in: enabled by `--sysbox` flag or `stack.sysbox: true` in stack.yml. */
+/** Sysbox is opt-in: `sysbox` flag or `sysbox: true` on the unit. */
 function sysboxEnabled(): boolean {
   return flags.sysbox || String((config.stack as Record<string, unknown>).sysbox) === 'true'
-}
-
-switch (subcommand) {
-  case 'base':
-    await cmdBase()
-    break
-  case 'harden':
-    await cmdHarden()
-    break
-  case 'reboot':
-    await cmdReboot()
-    break
-  case 'docker':
-    await cmdDocker()
-    break
-  case 'tailscale':
-    await cmdTailscale()
-    break
-  case 'rootless':
-    await cmdRootless()
-    break
-  case 'brew-shim':
-    await cmdBrewShim()
-    break
-  case 'verify':
-    await cmdVerify()
-    break
-  case 'lockdown':
-    await cmdLockdown()
-    break
-  default:
-    console.error(`Unknown command: ${subcommand}`)
-    console.error('Run: stack-cli vps-setup --help')
-    process.exit(1)
 }
 
 // ── base ────────────────────────────────────────────────────────────────────
@@ -128,7 +113,7 @@ async function cmdBase() {
 
   // The admin user gets the SSH public key that pairs with host.sshKey.
   const authorizedKey = resolveAuthorizedKey()
-  // Passwords are generated once and persisted to .env so re-runs are idempotent.
+  // Passwords are generated once and persisted to the machine secrets file so re-runs are idempotent.
   const sudoPassword = ensurePassword('SUDO_USER_PASSWORD', config.host.sudoUserPassword)
   // The stack owner has no login: its password stays locked unless one was set (legacy).
   const appPassword = config.host.appUserPassword
@@ -158,8 +143,7 @@ async function cmdBase() {
   })
 
   if (result.exitCode !== 0) {
-    console.error('\n\x1b[31mBase setup failed\x1b[0m')
-    process.exit(1)
+    fail('\n\x1b[31mBase setup failed\x1b[0m')
   }
 
   console.log(`\n\x1b[32mBase setup complete.\x1b[0m`)
@@ -167,8 +151,8 @@ async function cmdBase() {
   console.log(
     `  1. Test SSH as ${sudoUser}: ssh -i ${ssh.keyPath} -p ${ssh.port} ${sudoUser}@${ssh.host}`
   )
-  console.log(`  2. Update .env: SSH_USER=${sudoUser}`)
-  console.log(`  3. Run: stack-cli vps-setup harden`)
+  console.log(`  2. Set host.ssh.user: ${sudoUser} in the machine file`)
+  console.log(`  3. Run: airstack deploy <machine> --install --step harden`)
 }
 
 // ── harden ──────────────────────────────────────────────────────────────────
@@ -196,8 +180,7 @@ async function cmdHarden() {
   })
 
   if (result.exitCode !== 0) {
-    console.error('\n\x1b[31mHardening failed\x1b[0m')
-    process.exit(1)
+    fail('\n\x1b[31mHardening failed\x1b[0m')
   }
 
   if (flags.finalize) {
@@ -208,8 +191,8 @@ async function cmdHarden() {
     console.log(
       `  1. Test hardened port: ssh -i ${ssh.keyPath} -p ${hardenedPort} ${sudoUser}@${ssh.host}`
     )
-    console.log(`  2. Update .env: SSH_USER=${sudoUser}, SSH_PORT=${hardenedPort}`)
-    console.log(`  3. Run: stack-cli vps-setup harden --finalize`)
+    console.log(`  2. Set host.ssh.user: ${sudoUser} and host.ssh.port: ${hardenedPort} in the machine file`)
+    console.log(`  3. Run: airstack deploy <machine> --install --step harden --finalize`)
   }
 }
 
@@ -228,14 +211,13 @@ async function cmdReboot() {
     const reachable = await testSSHConnection(ssh, 5)
     if (reachable) {
       console.log(`\n\x1b[32mVPS back online after ~${elapsed + 5}s\x1b[0m`)
-      console.log(`\nNext step: stack-cli vps-setup docker`)
+      console.log(`\nNext step: airstack deploy <machine> --install --step docker`)
       return
     }
     process.stdout.write(`  waiting... (${elapsed + 5}s/${maxWait}s)\r`)
   }
 
-  console.log(`\n\x1b[31mVPS did not come back within ${maxWait}s\x1b[0m`)
-  process.exit(1)
+  fail(`VPS did not come back within ${maxWait}s`)
 }
 
 // ── docker ──────────────────────────────────────────────────────────────────
@@ -264,12 +246,11 @@ async function cmdDocker() {
   })
 
   if (result.exitCode !== 0) {
-    console.error('\n\x1b[31mDocker setup failed\x1b[0m')
-    process.exit(1)
+    fail('\n\x1b[31mDocker setup failed\x1b[0m')
   }
 
   console.log(`\n\x1b[32mDocker setup complete.\x1b[0m`)
-  console.log(`\nNext step: stack-cli vps-setup verify`)
+  console.log(`\nNext step: airstack deploy <machine> --install --step verify`)
 }
 
 // ── rootless ────────────────────────────────────────────────────────────────
@@ -278,8 +259,7 @@ async function cmdDocker() {
 async function cmdRootless() {
   const devUsers = config.host.devUsers
   if (devUsers.length === 0) {
-    console.error('No dev users configured. Set DEV_USERS in .env (or host.devUsers in stack.yml).')
-    process.exit(1)
+    fail('No dev users configured. Set host.users.dev in the machine file.')
   }
   const distro = await getDistro()
   const scriptPath = resolveScript(projectRoot, sharedPaths, distro, 'rootless')
@@ -294,8 +274,7 @@ async function cmdRootless() {
     envVars: { DEV_USERS: devUsers.join(' ') },
   })
   if (result.exitCode !== 0) {
-    console.error('\n\x1b[31mRootless setup failed\x1b[0m')
-    process.exit(1)
+    fail('\n\x1b[31mRootless setup failed\x1b[0m')
   }
   console.log(`\n\x1b[32mRootless Docker ready.\x1b[0m Dev users run plain \`docker\`; it talks to their own daemon.`)
 }
@@ -306,8 +285,7 @@ async function cmdRootless() {
 async function cmdBrewShim() {
   const owner = config.host.brewOwner || config.host.devUsers[0] || ''
   if (!owner) {
-    console.error('No Homebrew owner. Set BREW_OWNER in .env (or host.brewOwner), or list a dev user.')
-    process.exit(1)
+    fail('No Homebrew owner. Set host.users.brewOwner in the machine file, or list a dev user.')
   }
   const distro = await getDistro()
   const scriptPath = resolveScript(projectRoot, sharedPaths, distro, 'brew-shim')
@@ -322,8 +300,7 @@ async function cmdBrewShim() {
     envVars: { BREW_OWNER: owner, APP_USER: config.host.appUser },
   })
   if (result.exitCode !== 0) {
-    console.error('\n\x1b[31mBrew shim setup failed\x1b[0m')
-    process.exit(1)
+    fail('\n\x1b[31mBrew shim setup failed\x1b[0m')
   }
   console.log(`\n\x1b[32mDone.\x1b[0m Other accounts can run brew-installed tools but not 'brew install'.`)
 }
@@ -356,12 +333,11 @@ async function cmdTailscale() {
   })
 
   if (result.exitCode !== 0) {
-    console.error('\n\x1b[31mTailscale setup failed\x1b[0m')
-    process.exit(1)
+    fail('\n\x1b[31mTailscale setup failed\x1b[0m')
   }
 
   console.log(`\n\x1b[32mTailscale setup complete.\x1b[0m`)
-  console.log(`\nNext step: list tailnet ports under plugins.tailscale.ports, then stack-cli deploy`)
+  console.log(`\nNext step: list tailnet ports under plugins.tailscale.ports, then airstack deploy <machine>`)
 }
 
 // ── verify ──────────────────────────────────────────────────────────────────
@@ -391,12 +367,11 @@ async function cmdVerify() {
   })
 
   if (result.exitCode !== 0) {
-    console.error('\n\x1b[31mVerification found failures.\x1b[0m')
-    process.exit(1)
+    fail('\n\x1b[31mVerification found failures.\x1b[0m')
   }
 
   console.log(`\n\x1b[32mVPS is ready for deployment.\x1b[0m`)
-  console.log(`\nNext step: stack-cli deploy`)
+  console.log(`\nNext step: airstack deploy <machine>`)
 }
 
 // ── lockdown ──────────────────────────────────────────────────────────────────
@@ -425,13 +400,11 @@ async function cmdLockdown() {
   if (config.host.sshExpose !== 'tunnel') {
     console.error(`\n\x1b[31mhost.sshExpose is not 'tunnel'.\x1b[0m`)
     console.error(`Set host.sshExpose: tunnel (or SSH_EXPOSE=tunnel) before locking down,`)
-    console.error(`so the CLI knows to route subsequent connections through cloudflared.`)
-    process.exit(1)
+    fail(`so the CLI knows to route subsequent connections through cloudflared.`)
   }
   if (!config.host.sshTunnelHostname) {
     console.error(`\n\x1b[31mhost.sshTunnelHostname is not set.\x1b[0m`)
-    console.error(`Set it to your Cloudflare Access SSH hostname (e.g. ssh.example.com).`)
-    process.exit(1)
+    fail(`Set it to your Cloudflare Access SSH hostname (e.g. ssh.example.com).`)
   }
 
   // Preflight — confirm the tunnel SSH route works BEFORE closing the direct port.
@@ -448,11 +421,11 @@ async function cmdLockdown() {
   if (!reachable) {
     console.error(`\n\x1b[31mTunnel SSH is NOT reachable yet.\x1b[0m`)
     console.error(`Set up the tunnel route first, then retry (or pass --force to override):`)
-    console.error(`  1. Deploy so cloudflared is running: stack-cli deploy`)
+    console.error(`  1. Deploy so cloudflared is running: airstack deploy <machine>`)
     console.error(`  2. Add a tunnel ingress rule: ssh://10.200.0.1:${port} for hostname ${config.host.sshTunnelHostname}`)
     console.error(`  3. Add a Cloudflare Access (self-hosted) app for that hostname`)
     console.error(`  4. Authenticate locally once: cloudflared access ssh-config --hostname ${config.host.sshTunnelHostname}`)
-    if (!flags.force) process.exit(1)
+    if (!flags.force) fail('tunnel SSH preflight failed (use --force to override)')
     console.error(`\n\x1b[33m--force given: proceeding despite failed preflight.\x1b[0m`)
   } else {
     console.log(`  \x1b[32mTunnel SSH reachable.\x1b[0m`)
@@ -477,8 +450,7 @@ async function cmdLockdown() {
 function resolveAuthorizedKey(): string {
   const keyPath = expandKey(config.host.sshKey)
   if (!keyPath) {
-    console.error('No SSH key configured (host.sshKey / SSH_KEY). Needed to seed the admin user.')
-    process.exit(1)
+    fail('No SSH key configured (host.ssh.key in the machine file). Needed to seed the admin user.')
   }
   const pubPath = `${keyPath}.pub`
   if (existsSync(pubPath)) {
@@ -489,64 +461,15 @@ function resolveAuthorizedKey(): string {
     const out = Bun.spawnSync(['ssh-keygen', '-y', '-f', keyPath])
     if (out.exitCode === 0) return new TextDecoder().decode(out.stdout).trim()
   } catch { /* fall through to error */ }
-  console.error(`Could not find or derive a public key for ${keyPath}.`)
-  console.error(`Expected a public key at ${pubPath}. Generate one with:`)
-  console.error(`  ssh-keygen -y -f ${keyPath} > ${pubPath}`)
-  process.exit(1)
+  return fail(`Could not find or derive a public key for ${keyPath}. Generate one: ssh-keygen -y -f ${keyPath} > ${pubPath}`)
 }
 
-/** Return the given password, or generate a strong one and persist it to .env. */
+/** Return the given password, or generate a strong one and persist it to the machine secrets file. */
 function ensurePassword(envVar: string, current: string): string {
   if (current) return current
   const generated = randomBytes(18).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)
-  upsertEnvVar(envVar, generated)
-  console.log(`  Generated ${envVar} and saved it to ${config.stackConfig.envFile}`)
+  persistSecret(envVar, generated)
+  console.log(`  Generated ${envVar} and saved it to the machine secrets file`)
   return generated
 }
 
-/** Insert or update KEY=value in the .env file (used for generated secrets). */
-function upsertEnvVar(key: string, value: string): void {
-  const envPath = config.stackConfig.envFile
-  const lines = existsSync(envPath) ? readFileSync(envPath, 'utf-8').split('\n') : []
-  const idx = lines.findIndex((l) => l.startsWith(`${key}=`))
-  if (idx >= 0) {
-    lines[idx] = `${key}=${value}`
-  } else if (lines.length > 0 && lines[lines.length - 1] === '') {
-    lines.splice(lines.length - 1, 0, `${key}=${value}`)
-  } else {
-    lines.push(`${key}=${value}`)
-  }
-  writeFileSync(envPath, lines.join('\n'), { mode: 0o600 })
-}
-
-function getFlagValue(a: string[], flag: string): string | undefined {
-  const idx = a.indexOf(flag)
-  return idx >= 0 && idx + 1 < a.length ? a[idx + 1] : undefined
-}
-
-function showHelp() {
-  console.log(`Usage: stack-cli vps-setup <command> [options]
-
-Commands:
-  base                 Install packages, set hostname, create users
-  harden               UFW, SSH hardening, swap, fail2ban, sysctl
-  harden --finalize    Close port 22, restrict AllowUsers
-  reboot               Reboot VPS and wait for reconnection
-  docker               Install Docker CE + daemon hardening (add --sysbox for Sysbox runtime)
-  tailscale            Install Tailscale + join the tailnet (plugins.tailscale.authKey
-                       for unattended login, otherwise prints a login URL)
-  rootless             Rootless Docker for each dev user (DEV_USERS / host.devUsers)
-  brew-shim            One Homebrew owner (BREW_OWNER); read-only brew for other accounts
-  verify               Check everything is ready for deploy
-  lockdown             Close the external SSH port; route SSH via the Cloudflare
-                       tunnel (requires host.sshExpose: tunnel). --undo reopens it.
-
-Options:
-  --sysbox             Install/verify the Sysbox runtime (docker, verify).
-                       Also enabled via stack.sysbox: true in stack.yml.
-  --finalize           harden only: close port 22 and restrict AllowUsers
-  --no-lock-root       base only: leave the root password unchanged (default: lock it)
-  --undo               lockdown only: reopen the external SSH port
-  --force              lockdown only: proceed even if the tunnel preflight fails
-  --distro <name>      Override distro detection (default: auto from /etc/os-release)`)
-}

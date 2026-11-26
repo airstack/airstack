@@ -10,29 +10,33 @@
  */
 
 import type { DeployContext } from '../types.js'
+import { composeCommand } from '../lib/compose.js'
+
+const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
 
 export async function dryRun(ctx: DeployContext): Promise<void> {
-  const { config, remote } = ctx
-  const { installDir } = config.stack
-  const { appUser } = config.host
+  const { remote } = ctx
 
   if (!remote) {
     ctx.errors.push({ phase: 'dry-run', message: 'No remote executor configured', fatal: true })
     return
   }
+  if (ctx.compose.skip) {
+    ctx.phaseStatus.push({ phase: 'dry-run', success: true, message: 'No compose services (skipped)' })
+    return
+  }
+  const profileArgs = ctx.compose.profiles.map(p => `--profile ${q(p)}`).join(' ')
+
   // Build services that need it (before config validation)
   const buildServices = ctx.compose.services
     .filter(s => s.action === 'build')
     .map(s => s.service)
 
   if (buildServices.length > 0) {
-    const buildArgs = ctx.compose.buildArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
-    const services = buildServices.map(s => `'${s.replace(/'/g, "'\\''")}'`).join(' ')
-    const profileArgs = ctx.compose.profiles.map(p => `--profile '${p.replace(/'/g, "'\\''")}'`).join(' ')
+    const buildArgs = ctx.compose.buildArgs.map(q).join(' ')
+    const services = buildServices.map(q).join(' ')
     ctx.log.info(`Building ${buildServices.length} service(s): ${buildServices.join(' ')}`)
-    const buildResult = await remote.run(
-      `sudo -u ${appUser} bash -c 'cd ${installDir} && docker compose ${profileArgs} build ${buildArgs} ${services}'`,
-    )
+    const buildResult = await remote.run(composeCommand(ctx, `${profileArgs} build ${buildArgs} ${services}`))
     if (buildResult.exitCode !== 0) {
       ctx.errors.push({
         phase: 'dry-run',
@@ -43,10 +47,7 @@ export async function dryRun(ctx: DeployContext): Promise<void> {
     }
   }
   // Validate compose config
-  const profileArgs = ctx.compose.profiles.map(p => `--profile '${p.replace(/'/g, "'\\''")}'`).join(' ')
-  const result = await remote.run(
-    `sudo -u ${appUser} bash -c 'cd ${installDir} && docker compose ${profileArgs} config' 2>&1`,
-  )
+  const result = await remote.run(`${composeCommand(ctx, `${profileArgs} config`)} 2>&1`)
 
   if (result.exitCode !== 0) {
     ctx.errors.push({

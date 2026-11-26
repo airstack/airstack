@@ -13,8 +13,12 @@ function validateDeployDir(deployDir: string, projectRoot: string): void {
   const resolved = resolve(deployDir)
   const resolvedRoot = resolve(projectRoot)
 
+  // Fleet layout: <fleet>/.airstack/deploy/<machine>/<unit> (its project root is the stack dir,
+  // so the inside-projectRoot rule below does not apply; the fixed shape keeps rm -rf safe).
+  if (/\/\.airstack\/deploy\/[a-z][a-z0-9-]*\/[a-z0-9][a-z0-9_-]*$/.test(resolved)) return
+
   if (basename(resolved) !== '.deploy') {
-    throw new Error(`deployDir must be named .deploy, got: ${resolved}`)
+    throw new Error(`deployDir must be named .deploy or be .airstack/deploy/<machine>/<unit>, got: ${resolved}`)
   }
 
   if (!resolved.startsWith(resolvedRoot + '/') && resolved !== resolvedRoot) {

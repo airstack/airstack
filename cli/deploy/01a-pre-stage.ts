@@ -5,7 +5,7 @@
  * Plugins/hooks: early validations, environment checks, abort before staging.
  */
 
-import { join } from 'node:path'
+import { resolve } from 'node:path'
 import { assertSafeForSecrets } from '../lib/git-safety.js'
 import type { DeployContext } from '../types.js'
 
@@ -13,13 +13,14 @@ export async function preStage(ctx: DeployContext): Promise<void> {
   const { projectRoot, config } = ctx
   const allowUnsafe = config.stackConfig.allowUnsafeGit
 
-  // Verify deploy output paths are gitignored (they contain secrets)
+  // Verify deploy output paths are gitignored (they contain secrets). resolve(): fleet units pass
+  // absolute paths under <fleet>/.airstack/.
   const checks = [
-    { path: join(projectRoot, config.deploy.stagingDir), label: 'deploy.staging_dir' },
-    { path: join(projectRoot, config.deploy.report.destination), label: 'deploy.report.destination' },
+    { path: resolve(projectRoot, config.deploy.stagingDir), label: 'deploy.staging_dir' },
+    { path: resolve(projectRoot, config.deploy.report.destination), label: 'deploy.report.destination' },
   ]
   if (config.deploy.deployLogs !== false) {
-    checks.push({ path: join(projectRoot, config.deploy.deployLogs), label: 'deploy.deploy_logs' })
+    checks.push({ path: resolve(projectRoot, config.deploy.deployLogs), label: 'deploy.deploy_logs' })
   }
 
   for (const { path, label } of checks) {

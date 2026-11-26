@@ -68,17 +68,19 @@ export async function postSync(ctx: DeployContext): Promise<void> {
     }
   }
 
-  // 3. Verify critical files exist
-  const verify = await remote.run(
-    `sudo test -f ${installDir}/docker-compose.yml && echo ok`,
-  )
-  if (!verify.stdout.includes('ok')) {
-    ctx.errors.push({ phase: 'post-sync', message: 'docker-compose.yml missing on VPS after sync', fatal: true })
-    return
-  }
+  // 3. Verify critical files exist (units with no compose services have no compose file)
+  if (!ctx.compose.skip) {
+    const verify = await remote.run(
+      `sudo test -f ${installDir}/docker-compose.yml && echo ok`,
+    )
+    if (!verify.stdout.includes('ok')) {
+      ctx.errors.push({ phase: 'post-sync', message: 'docker-compose.yml missing on VPS after sync', fatal: true })
+      return
+    }
 
-  // 3b. docker-compose.yml carries secrets (tunnel token): owner-only.
-  await remote.run(`sudo chmod 600 ${installDir}/docker-compose.yml`)
+    // 3b. docker-compose.yml carries secrets (tunnel token): owner-only.
+    await remote.run(`sudo chmod 600 ${installDir}/docker-compose.yml`)
+  }
 
   // 4. Ensure plugin data directories exist on VPS
   for (const plugin of ctx.plugins) {

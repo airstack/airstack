@@ -8,10 +8,6 @@
   },
   "scripts": {
     "airstack": "bun cli/index.ts",
-    "deploy": "bun cli/deploy.ts",
-    "status": "bun cli/status.ts",
-    "stacks": "bun cli/stacks.ts",
-    "logs": "bun cli/logs.ts",
     "test": "bunx vitest run",
     "test:watch": "bunx vitest",
     "typecheck": "bunx tsc --noEmit",

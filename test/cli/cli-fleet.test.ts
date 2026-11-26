@@ -2,7 +2,7 @@
 // virtual module need Bun; vitest itself runs under Node).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { cpSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -85,5 +85,34 @@ describe('airstack CLI', () => {
     const r = run(['frobnicate'], elsewhere)
     expect(r.code).toBe(3)
     expect(r.out).toMatch(/unknown verb: frobnicate/)
+    expect(run(['cf-tunnel', 'verify'], elsewhere).out).toMatch(/airstack fleet plugin <machine> cf-tunnel verify/)
+  })
+})
+
+describe('airstack deploy --stage', () => {
+  it('renders every unit locally and touches nothing remote', () => {
+    const r = run(['deploy', 'airstack-test1', '--stage'], root)
+    expect(r.code).toBe(0)
+    for (const u of ['airstack (machine)', 'cliproxy', 'devstack', 'teststack', 'wiki']) {
+      expect(r.out).toContain(`ok   airstack-test1/${u}: staged`)
+    }
+    const dir = join(root, '.airstack/deploy/airstack-test1')
+    const compose = readFileSync(join(dir, 'cliproxy/docker-compose.yml'), 'utf8')
+    expect(compose).toContain('container_name: cliproxy-cli-proxy-api')
+    expect(compose).toContain('/home/deploy/stacks/cliproxy/.cliproxyapi/config.yaml')
+    expect(readFileSync(join(dir, 'devstack/etc/cron.d/devstack_backup'), 'utf8')).toMatch(/ deployuser \/home\/deployuser\/airstack\/devstack\/crons\/backup\.sh/)
+    expect(existsSync(join(dir, 'airstack/docker-compose.yml'))).toBe(false) // no machine services in the fixture
+  })
+
+  it('refuses a fleet whose .airstack/ is not gitignored', () => {
+    spawnSync('git', ['init', '-q'], { cwd: root })
+    const r = run(['deploy', 'airstack-test1', '--stage'], root)
+    expect(r.code).toBe(2)
+    expect(r.out).toMatch(/\.airstack\/ is not gitignored/)
+  })
+
+  it('usage errors exit 3', () => {
+    expect(run(['deploy'], root).code).toBe(3)
+    expect(run(['deploy', 'airstack-test1', '--step', 'base'], root).out).toMatch(/--step only works with --install/)
   })
 })

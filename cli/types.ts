@@ -139,6 +139,8 @@ export interface ComposeState {
   upArgs: string[]
   /** Docker Compose profiles to activate */
   profiles: string[]
+  /** No compose file for this unit (e.g. a machine with no sidecar services): skip validate/start. */
+  skip?: boolean
 }
 
 // ── Deploy Phases ───────────────────────────────────────────────────────────

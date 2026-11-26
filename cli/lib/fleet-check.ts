@@ -4,7 +4,7 @@
  */
 
 import { pathToFileURL } from 'node:url'
-import { relative } from 'node:path'
+import { dirname, relative } from 'node:path'
 import type { Plugin, PluginScope } from '../types.js'
 import { registerPluginApi } from '../plugin-api.js'
 import { resolvePluginRef, type Fleet, type Issue, type Machine } from './fleet.js'
@@ -25,6 +25,7 @@ export async function loadPluginRef(root: string, ref: string, config: unknown):
   if (typeof mod.register !== 'function') throw new Error(`${ref}: ${relative(root, r.path)} does not export register()`)
   const plugin = mod.register(config) as Plugin
   plugin.name = r.name
+  plugin.sourceDir = dirname(r.path)
   return { ref, source: r.source, plugin, scope: plugin.scope ?? 'any' }
 }
 

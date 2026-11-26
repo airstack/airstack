@@ -86,9 +86,9 @@ export interface Machine {
   dir?: string
   host: HostConfig
   root: string
-  /** Machine-scope plugin refs → config (secrets resolved). */
   /** host + root with `${NAME}` left in place, safe to print. */
   displayHost: Plain
+  /** Machine-scope plugin refs → config (secrets resolved). */
   plugins: Record<string, unknown>
   displayPlugins: Record<string, unknown>
   instances: StackInstance[]
@@ -96,6 +96,8 @@ export interface Machine {
   secretsUsed: string[]
   /** Secret values (for redaction). Never print. */
   secretValues: string[]
+  /** All secrets for this machine (_fleet + machine file). Never print. */
+  secrets: Record<string, string>
   issues: Issue[]
 }
 
@@ -299,7 +301,7 @@ export function loadMachine(fleet: Fleet, name: string): Machine {
   const issues: Issue[] = []
   const empty: Machine = {
     name, file: '', host: normalizeHost({}, name), displayHost: {}, root: '', plugins: {}, displayPlugins: {},
-    instances: [], secretsUsed: [], secretValues: [], issues,
+    instances: [], secretsUsed: [], secretValues: [], secrets: {}, issues,
   }
   if (!ref) {
     issues.push({ level: 'fail', file: 'machines/', message: `no machine '${name}'` })
@@ -398,6 +400,7 @@ export function loadMachine(fleet: Fleet, name: string): Machine {
     displayHost: { host: normalizeHost((mf.display.host ?? {}) as Plain, name), root: mf.display.root ?? machineRoot },
     secretsUsed: usedNames,
     secretValues: usedNames.map((n) => secrets[n]).filter((v) => v && v.length >= 6),
+    secrets,
     issues,
   }
 }

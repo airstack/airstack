@@ -9,7 +9,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import Handlebars from 'handlebars'
 import * as yaml from 'js-yaml'
 import { resolveFileOptional } from './resolve-file.js'
@@ -149,7 +149,7 @@ export function renderReport(ctx: DeployContext, logDir?: string): string {
   const rendered = tmpl(report.data)
 
   // 5. Write to destination (restricted perms — report may contain gateway tokens)
-  const destination = join(ctx.projectRoot, config.deploy.report.destination)
+  const destination = resolve(ctx.projectRoot, config.deploy.report.destination)
   mkdirSync(dirname(destination), { recursive: true })
   writeFileSync(destination, rendered, { mode: 0o600 })
 

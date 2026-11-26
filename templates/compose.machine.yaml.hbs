@@ -1,0 +1,14 @@
+{{!-- Machine compose project `airstack`: services from machine-scope plugins (e.g. cloudflared).
+     Creates the shared bridge network `airstack`. Root-daemon stacks can join it as an external
+     network (networks: { stack-net: { external: true, name: airstack } }) to be reachable by the
+     tunnel by container name. Rootless (dev-user) stacks cannot: different daemon. --}}
+services:
+{{{compose.pluginServices}}}
+networks:
+  stack-net:
+    name: airstack
+    driver: bridge
+    ipam:
+      config:
+        # Pinned subnet so container IPs (and tunnel trustedProxies) stay stable.
+        - subnet: {{stack.dockerSubnet}}

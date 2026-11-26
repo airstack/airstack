@@ -47,7 +47,7 @@ apt update && apt upgrade -y
 CURRENT_STEP="package installation"
 echo "==> Installing essential packages..."
 apt install -y \
-  curl wget git vim htop tmux unzip jq cronie \
+  curl wget git rsync vim htop tmux unzip jq cronie \
   ca-certificates gnupg lsb-release \
   apt-transport-https software-properties-common \
   ufw fail2ban auditd

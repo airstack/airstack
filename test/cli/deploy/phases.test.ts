@@ -517,8 +517,10 @@ describe('phase: start', () => {
     await start(ctx)
 
     const upCall = remote.calls.find(c => c.type === 'run' && c.args[0].includes('docker compose'))
-    expect(upCall!.args[0]).toContain("--profile 'sandbox'")
-    expect(upCall!.args[0]).toContain("--profile 'monitoring'")
+    // The compose command sits inside bash -c '…', so inner quotes arrive escaped as '\''
+    const unescaped = upCall!.args[0].replaceAll(`'\\''`, `'`)
+    expect(unescaped).toContain("--profile 'sandbox'")
+    expect(unescaped).toContain("--profile 'monitoring'")
   })
 
   it('pushes fatal error on non-zero exit', async () => {

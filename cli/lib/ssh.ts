@@ -77,7 +77,8 @@ export function sshArgs(
   if (ssh.viaTunnel) {
     return ['-F', tunnelConfigPath(ssh)]
   }
-  const args = ['-i', expandKey(ssh.keyPath), '-o', 'StrictHostKeyChecking=accept-new']
+  const key = expandKey(ssh.keyPath)
+  const args = [...(key ? ['-i', key] : []), '-o', 'StrictHostKeyChecking=accept-new']
   if (batchMode) args.push('-o', 'BatchMode=yes')
   args.push(scp ? '-P' : '-p', String(ssh.port))
   return args
@@ -88,7 +89,8 @@ export function rsyncRsh(ssh: SSHConfig): string {
   if (ssh.viaTunnel) {
     return `ssh -F ${tunnelConfigPath(ssh)}`
   }
-  return `ssh -p ${ssh.port} -i '${expandKey(ssh.keyPath)}' -o StrictHostKeyChecking=accept-new -o BatchMode=yes`
+  const key = expandKey(ssh.keyPath)
+  return `ssh -p ${ssh.port}${key ? ` -i '${key}'` : ''} -o StrictHostKeyChecking=accept-new -o BatchMode=yes`
 }
 
 export function createRemoteExecutor(ssh: SSHConfig): RemoteExecutor {
