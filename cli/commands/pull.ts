@@ -31,7 +31,7 @@ export const PULL_USAGE = `Usage: airstack pull <machine>
 Copies the machine's live managed files to .airstack/pull/<machine>/ and shows how they differ
 from the fleet (secrets redacted). After a pull, deploy may overwrite the box edits you saw.`
 
-const STAGE_FLAGS: Flags = { targets: [], all: false, stage: true, dryRun: false, force: false, prune: false, install: false, finalize: false, undo: false, verbose: false }
+const STAGE_FLAGS: Flags = { targets: [], all: false, stage: true, dryRun: false, force: false, prune: false, install: false, adopt: false, finalize: false, undo: false, verbose: false }
 
 export async function pullCommand(args: string[], fleetPath: string, out: Output): Promise<number> {
   const name = args.find((a) => !a.startsWith('-'))

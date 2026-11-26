@@ -27,6 +27,7 @@ quoted.
 | `--force` | Recreate all services (`docker compose up --force-recreate`). Overwrite box edits (they stay in the machine's config history). |
 | `--prune` | Stop instances that were removed from the machine file. Keeps their directories. |
 | `--install` | First-time setup of a fresh box, then a normal deploy. See [Install sequence](#install-sequence). |
+| `--adopt` | Take over a machine that is already set up. See [Adopt a machine](#adopt-a-machine-that-is-already-set-up). |
 | `--step <step>` | With `--install`: run one setup step only. Steps: `base`, `harden`, `reboot`, `docker`, `rootless`, `brew-shim`, `tailscale`, `verify`, `lockdown`. |
 | `--finalize` | With `--step harden`: close the bootstrap SSH port. `--install` does this itself. |
 | `--undo` | With `--step lockdown`: open the public SSH port again. |
@@ -81,6 +82,32 @@ line per machine at the end.
 | validate | Plugin validation. |
 
 `--stage` stops after the stage phase.
+
+## Adopt a machine that is already set up
+
+Use `--adopt` for a machine that is hardened and runs Docker already, for example a machine
+that an older tool set up. It does not run the setup scripts again.
+
+```console
+$ airstack deploy web-1 --adopt
+ok   web-1: sudo without a password
+ok   web-1: user adminroot exists
+ok   web-1: docker answers
+...
+ok   web-1: wrote /etc/airstack/machine.yaml
+ok   web-1: airstack installed 0.1.0
+->   airstack deploy web-1   (deploys the units)
+```
+
+1. It connects as `host.ssh.user` on `host.ssh.port`.
+2. It checks, read only: passwordless sudo, the users in `host.users`, Docker and the compose
+   plugin, rsync and git, UFW (warning only), rootless Docker of each dev user (warning only).
+3. When a check fails, it stops. Nothing on the machine changed.
+4. Then it writes `/etc/airstack/machine.yaml`, puts the airstack build on the machine, and
+   creates the machine root. It never starts, stops or changes containers.
+5. A machine that already has the marker is left alone.
+
+Run a normal `airstack deploy` next to deploy the units.
 
 ## Install sequence
 

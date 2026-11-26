@@ -12,6 +12,8 @@ export const DEPLOY_USAGE = `Usage: airstack deploy <machine>... | '<pattern>' |
   --install            first-time setup: base, harden, docker, rootless (if dev users), verify, reboot,
                        then lock SSH to host.ssh.port (only if it answers after the reboot),
                        write /etc/airstack/machine.yaml, then deploy
+  --adopt              take over a machine that is already set up: checks it, then writes the
+                       marker and the airstack build. No setup scripts, no container changes
   --install --step <s> run one setup step only (${SETUP_STEPS.join(', ')})
   --finalize           with --step harden: close the bootstrap port by hand (--install does it itself)
   --undo               with --step lockdown: open the external SSH port again
@@ -28,6 +30,7 @@ export interface Flags {
   force: boolean
   prune: boolean
   install: boolean
+  adopt: boolean
   step?: string
   finalize: boolean
   undo: boolean
@@ -35,7 +38,7 @@ export interface Flags {
 }
 
 export function parseFlags(args: string[]): Flags | string {
-  const f: Flags = { targets: [], all: false, stage: false, dryRun: false, force: false, prune: false, install: false, finalize: false, undo: false, verbose: false }
+  const f: Flags = { targets: [], all: false, stage: false, dryRun: false, force: false, prune: false, install: false, adopt: false, finalize: false, undo: false, verbose: false }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     switch (a) {
@@ -46,6 +49,7 @@ export function parseFlags(args: string[]): Flags | string {
       case '--force': f.force = true; break
       case '--prune': f.prune = true; break
       case '--install': f.install = true; break
+      case '--adopt': f.adopt = true; break
       case '--finalize': f.finalize = true; break
       case '--undo': f.undo = true; break
       case '--step': f.step = args[++i]; if (!f.step) return '--step needs a step name'; break
@@ -59,6 +63,7 @@ export function parseFlags(args: string[]): Flags | string {
   if (f.step && !(SETUP_STEPS as readonly string[]).includes(f.step)) return `unknown step '${f.step}' (${SETUP_STEPS.join(', ')})`
   if (f.stage && f.dryRun) return '--stage and --dry-run are exclusive'
   if (f.install && (f.stage || f.dryRun)) return '--install changes the machine: it does not work with --stage or --dry-run'
+  if (f.adopt && (f.install || f.stage || f.dryRun || f.stack)) return '--adopt works alone: not with --install, --stage, --dry-run or --stack'
   if (f.undo && f.step !== 'lockdown') return '--undo only works with --install --step lockdown'
   if (!f.all && f.targets.length === 0) return 'name at least one machine, a quoted pattern, or --all'
   return f
