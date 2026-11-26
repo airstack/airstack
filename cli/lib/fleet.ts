@@ -23,6 +23,8 @@ export const CORE_ROOT = resolve(import.meta.dirname, '..', '..')
 export const BUILTIN_PLUGINS_DIR = join(CORE_ROOT, 'cli', 'plugins')
 export const BUILTIN_STACKS_DIR = join(CORE_ROOT, 'stacks')
 export const BUILTIN_PREFIX = 'airstack/'
+/** Machine root when the machine file sets none (plans/phase-1.md: /srv is for data a host serves). */
+export const DEFAULT_MACHINE_ROOT = '/srv/airstack'
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/
 const STACK_KEYS = new Set(['user', 'installDir', 'composeProject', 'values', 'templates', 'plugins', 'deploy'])
@@ -328,7 +330,7 @@ export function loadMachine(fleet: Fleet, name: string): Machine {
 
   const host = normalizeHost((m.host ?? {}) as Plain, name)
   if (!host.ip && !host.hostname) issues.push({ level: 'fail', file: mFile, key: 'host.ip', message: 'host.ip or host.hostname is required' })
-  const machineRoot = typeof m.root === 'string' ? m.root : '/home/deploy'
+  const machineRoot = typeof m.root === 'string' ? m.root : DEFAULT_MACHINE_ROOT
   if (!isAbsolute(machineRoot)) issues.push({ level: 'fail', file: mFile, key: 'root', message: 'must be an absolute path' })
 
   const plugins = (isPlainObject(m.plugins) ? m.plugins : {}) as Record<string, unknown>

@@ -155,7 +155,7 @@ async function applyRules(remote: RemoteExecutor, desired: PortRule[], log: Depl
   // accepts all tailscale0 traffic before UFW — these rules would be moot.
   const divert = await remote.run('sudo iptables -C INPUT -j ts-input 2>/dev/null && echo divert')
   if (divert.stdout.trim() === 'divert') {
-    log.warn(`[tailscale] netfilter divert is on — ALL host ports are open to the tailnet; re-run: stack-cli vps-setup tailscale`)
+    log.warn(`[tailscale] netfilter divert is on — ALL host ports are open to the tailnet; re-run: airstack deploy <machine> --install --step tailscale`)
   }
 
   const status = await remote.run('sudo ufw status')

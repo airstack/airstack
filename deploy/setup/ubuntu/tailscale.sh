@@ -58,7 +58,13 @@ else
   CURRENT_STEP="tailscale up"
   echo "==> Joining tailnet as '${VPS_HOSTNAME}'..."
   if [ -n "$TAILSCALE_AUTHKEY" ]; then
-    tailscale up --hostname="${VPS_HOSTNAME}" --authkey="${TAILSCALE_AUTHKEY}"
+    # Pass the key by file, never on the command line (visible in ps / process accounting).
+    KEYFILE="$(mktemp)"
+    chmod 600 "$KEYFILE"
+    printf '%s' "$TAILSCALE_AUTHKEY" > "$KEYFILE"
+    tailscale up --hostname="${VPS_HOSTNAME}" --auth-key="file:${KEYFILE}"; rc=$?
+    shred -u "$KEYFILE" 2>/dev/null || rm -f "$KEYFILE"
+    [ "$rc" -eq 0 ] || exit "$rc"
   else
     echo "  No TAILSCALE_AUTHKEY — open the login URL below to authorize this machine."
     tailscale up --hostname="${VPS_HOSTNAME}" --timeout=600s

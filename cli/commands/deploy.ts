@@ -178,6 +178,15 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
       return { ok: false, note: 'not installed' }
     }
     previous = marker.stacks
+
+    // Machine root and stacks/ belong to the stack user, closed to everyone else (docs/LAYOUT.md).
+    // Dev-user stacks live outside it (fleet check enforces that).
+    const su = m.host.users.stack
+    const mk = await remote.run(`sudo install -d -o ${su} -g ${su} -m 750 ${m.root} ${m.root}/stacks`)
+    if (mk.exitCode !== 0) {
+      out.fail(`${name}: cannot create ${m.root} for ${su}: ${(mk.stderr || mk.stdout).trim()}`)
+      return { ok: false, note: 'machine root' }
+    }
   }
 
   // ── units ──

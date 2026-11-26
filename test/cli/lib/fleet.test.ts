@@ -84,6 +84,12 @@ describe('machine loading', () => {
     expect(inst.origins.get('installDir')).toBe('default')
   })
 
+  it('machine root defaults to /srv/airstack', () => {
+    const m = loadMachine(loadFleet(root), 'ops2')
+    expect(m.root).toBe('/srv/airstack')
+    expect(m.instances[0].installDir).toBe('/srv/airstack/stacks/wiki')
+  })
+
   it('machine key must match the file name', () => {
     write('machines/ops2/machine.yaml', 'machine: ops3\nhost: { ip: 203.0.113.20 }\n')
     expect(fails(loadMachine(loadFleet(root), 'ops2').issues).join()).toMatch(/must equal the file name 'ops2'/)

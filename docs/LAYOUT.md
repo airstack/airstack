@@ -15,7 +15,7 @@ this layout, not the older "one app user does everything" layout.
 | Role | Example name | Login | `sudo` | Docker | Owns |
 |---|---|---|---|---|---|
 | Admin | `adminroot` | SSH key | yes | via `sudo` | nothing day to day; deploys and fixes |
-| Stack owner | `stackroot` | none (`nologin`, locked) | no | root daemon (`docker` group) | the install dir (`/home/deploy`), `.cliproxyapi`, cron env files, state |
+| Stack owner | `stackroot` | none (`nologin`, locked) | no | root daemon (`docker` group) | the machine root (`/srv/airstack`), `.cliproxyapi`, cron env files, state |
 | Dev account | `deployuser` | none; admin runs `sudo -iu deployuser` | no | its **own rootless** daemon | its home, Homebrew, project checkouts |
 
 ## Why
@@ -60,10 +60,19 @@ Published ports bind `127.0.0.1` by default (`daemon.json` `"ip"`).
 
 ## Where deploys go
 
-`stack.installDir` stays a normal directory such as `/home/deploy`. Deploy syncs as the admin,
-then `chown -R` it to the stack owner (mode 750). The stack owner's own home is
-`/var/lib/<APP_USER>` (Docker and git need a writable `HOME`). Moving the stack to `/srv/<name>`
-later is a config change plus one container recreate.
+| Path | What | Owner / mode |
+|---|---|---|
+| `/srv/airstack/` | machine root (`root:` in the machine file; default) | stack owner, 750 |
+| `/srv/airstack/machine/` | machine unit: compose project `airstack` (cloudflared), host crons | stack owner, 750 |
+| `/srv/airstack/stacks/<instance>/` | stacks run by the stack owner (root daemon) | stack owner, 750 |
+| `/home/<devuser>/airstack/<instance>/` | stacks run by a dev user (rootless daemon) | that dev user, 750 |
+| `/etc/airstack/machine.yaml` | node marker: machine, roles, paths, deployed instances | root, 644 |
+| `/etc/cron.d/<project>_*`, `/etc/stacks/<project>.env` | crons and per-instance manifests | root, 644 |
+
+`/srv` is the filesystem-standard place for data a host serves; `/home` stays for people. Deploy
+syncs as the admin, then `chown -R`s each unit to its run user. The stack owner's own home is
+`/var/lib/<stack user>` (Docker and git need a writable `HOME`). Dev-user stacks cannot live under
+the machine root (it is closed to them); `airstack fleet check` enforces that.
 
 Rules that keep the layout honest:
 
