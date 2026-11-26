@@ -28,6 +28,7 @@ async function cfTunnelCommand(args: string[], ctx: PluginCommandContext): Promi
 export function register(_config: unknown): Plugin {
   return {
     name: 'cloudflare',
+    scope: 'machine',
     composeServices: [{
       name: 'cloudflared',
       template: 'templates/cloudflared.docker-compose.yml.hbs',

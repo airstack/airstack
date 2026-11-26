@@ -61,6 +61,7 @@ export function register(config: unknown): Plugin {
   }
   return {
     name: 'cliproxyapi',
+    scope: 'stack',
     composeServices,
     hooks: {
       ...(us ? { 'pre-stage': async (ctx: DeployContext) => usageServerKeepOwner(ctx) } : {}),

@@ -1,7 +1,19 @@
 # airstack — Phase 1: fleet repo, multi-machine deploy, modes
 
-Status: approved. Step 1 (copy, openclaw removal, leak scan) done, not yet committed.
-Test machine: `airstack-test1`.
+Status: approved. Test machine: `airstack-test1` (OrbStack VM, `ssh joe@airstack-test1.orb.local`).
+
+Progress:
+- [x] Step 1: copy, openclaw removal, leak scan + pre-commit hook.
+- [x] R1: compiled binary loads fleet TS plugins; `airstack` virtual module.
+- [x] Step 2: fleet loader (`cli/lib/fleet.ts`), post-parse `${VAR}` (`vars.ts`), layered merge with
+      origins (`merge.ts`), modes + verb guard (`mode.ts`), plugin scopes (`fleet-check.ts`),
+      plugin API (`plugin-api.ts`), output formatter (`output.ts`), dispatcher (`index.ts`),
+      `whoami`, `fleet list|show|config|check`, built-in `airstack/cliproxy` stack, fixture
+      `test/fixtures/fleet-basic`. Legacy stack-cli verbs still run behind the guard.
+- [ ] Step 3: deploy on the fleet model (machine + per-instance contexts, compose per instance,
+      run users, cron instance prefixing, `/etc/airstack/machine.yaml`, `--install`, `--prune`,
+      port/network checks), `ssh`, `status`, `fleet logs`, `fleet plugin`; remove legacy verbs.
+- [ ] Step 4: live acceptance on airstack-test1 (section 11).
 Source: a fresh copy of stack-cli (`../stack-cli`, HEAD `fc05a0f`). stack-cli stays as it is.
 
 ## 0. Where phase 1 sits

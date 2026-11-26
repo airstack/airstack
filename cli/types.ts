@@ -202,8 +202,13 @@ export interface ComposeService {
   template: string
 }
 
+/** Where a plugin may be configured: machine file plugins, stack plugins, or both. */
+export type PluginScope = 'machine' | 'stack' | 'any'
+
 export interface Plugin {
   name: string
+  /** Where the plugin may be configured (plans/phase-1.md 4.6). Fleet plugins without it get 'any' + a warning. */
+  scope?: PluginScope
   /** Path to the directory containing this plugin's index.ts. Set by plugin loader. */
   sourceDir?: string
   /** Override for deploy source dir. Defaults to {sourceDir}/deploy/ */

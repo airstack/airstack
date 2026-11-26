@@ -1,0 +1,14 @@
+# A reusable stack: two instances on airstack-test1 differ only by port.
+values:
+  port: 3000
+  greeting: hello
+  apiKey: ${NODESTACK_API_KEY:-dev-key}
+templates:
+  compose.yaml: { src: compose.yaml.hbs }
+plugins:
+  airstack/cron:
+    crons:
+      backup: "3:00 AM"
+  hello: { who: world }
+deploy:
+  sync: { default: delete, preserve: [data/] }

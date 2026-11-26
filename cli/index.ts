@@ -1,152 +1,152 @@
 #!/usr/bin/env bun
 /**
- * Stack CLI v2 — unified entry point for all stack management commands.
+ * airstack — one binary, two modes (controller / node). See AGENTS.md and plans/phase-1.md.
  *
- * Usage: stack-cli <command> [args...]
+ * Every verb is registered with what it requires. The mode guard runs before anything else.
+ * The guard prevents accidents; it is NOT a security boundary (AGENTS.md rule 1).
+ *
+ * Global options (before or after the verb):
+ *   --fleet <path>   fleet repo (controller mode only; default ./airstack.yaml, no parent walk)
  */
 
-import { resolve, join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import pkg from '../package.json' with { type: 'json' }
+import { resolveMode, checkVerb, type VerbSpec } from './lib/mode.js'
+import { Output, EXIT } from './lib/output.js'
 
-const repoRoot = resolve(import.meta.dirname, '..')
+const VERSION = pkg.version
 
-// Parse --stack <name> from full argv (can appear before or after command)
-const allArgs = process.argv.slice(2)
-let stackName: string | undefined
-const filteredArgs: string[] = []
-for (let i = 0; i < allArgs.length; i++) {
-  if (allArgs[i] === '--stack' && i + 1 < allArgs.length) {
-    stackName = allArgs[i + 1]
-    i++
-  } else {
-    filteredArgs.push(allArgs[i])
+// Legacy stack-cli commands: still read ./stack.yml in the cwd. Replaced by fleet-aware verbs in
+// phase 1 step 3. They are controller verbs and pass through the same guard.
+const LEGACY: Record<string, { script: string; description: string }> = {
+  deploy: { script: 'deploy.ts', description: '(legacy, ./stack.yml) deploy the stack' },
+  status: { script: 'status.ts', description: '(legacy, ./stack.yml) containers and services' },
+  logs: { script: 'logs.ts', description: '(legacy, ./stack.yml) stream Docker logs' },
+  ssh: { script: 'ssh.ts', description: '(legacy, ./stack.yml) SSH into the VPS' },
+  stacks: { script: 'stacks.ts', description: '(legacy, ./stack.yml) list/deactivate stacks' },
+  env: { script: 'env.ts', description: '(legacy, ./stack.yml) resolved config' },
+  'vps-setup': { script: 'vps-setup.ts', description: '(legacy, ./stack.yml) provision a VPS' },
+}
+
+const VERBS: (VerbSpec & { description: string })[] = [
+  { name: 'whoami', requires: 'any', description: 'mode, machine/fleet, user, version, enabled verbs' },
+  { name: 'version', requires: 'any', description: 'print the airstack version' },
+  { name: 'help', requires: 'any', description: 'this help' },
+  { name: 'fleet', requires: 'controller', needsFleet: true, description: 'list | show | config | check the fleet' },
+  ...Object.entries(LEGACY).map(([name, l]) => ({
+    name, requires: 'controller' as const, mutating: true, description: l.description,
+  })),
+]
+
+// ── argv ────────────────────────────────────────────────────────────────────
+
+const argv = process.argv.slice(2)
+let fleetFlag: string | undefined
+const rest: string[] = []
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === '--fleet' && i + 1 < argv.length) fleetFlag = argv[++i]
+  else if (argv[i].startsWith('--fleet=')) fleetFlag = argv[i].slice(8)
+  else rest.push(argv[i])
+}
+let verbName = rest[0] ?? 'help'
+if (verbName === '--help' || verbName === '-h') verbName = 'help'
+if (verbName === '--version' || verbName === '-v') verbName = 'version'
+const args = rest.slice(1)
+
+const out = new Output()
+const mode = resolveMode({ fleetFlag })
+
+if (fleetFlag && mode.mode === 'node') {
+  out.fail('blocked: --fleet is ignored on a node; the fleet can only be pinned in /etc/airstack/machine.yaml')
+  process.exit(EXIT.USAGE)
+}
+
+// ── dispatch ────────────────────────────────────────────────────────────────
+
+const verb = VERBS.find((v) => v.name === verbName)
+
+if (!verb) {
+  // Plugin commands of the legacy single-stack layout (cf-tunnel, backup, tailscale, …).
+  const gate = checkVerb(mode, { name: verbName, requires: 'controller', mutating: true })
+  if (!gate.ok) {
+    out.fail(gate.reason)
+    process.exit(EXIT.USAGE)
+  }
+  process.exit(await runLegacyPluginCommand(verbName, args))
+}
+
+const gate = checkVerb(mode, verb)
+if (!gate.ok) {
+  out.fail(gate.reason)
+  if (verb.needsFleet && mode.mode === 'controller') out.next(`airstack --fleet <path> ${verbName} …`)
+  process.exit(EXIT.USAGE)
+}
+
+switch (verb.name) {
+  case 'version':
+    out.info(`airstack ${VERSION}`)
+    process.exit(EXIT.OK)
+  case 'help':
+    printHelp()
+    process.exit(EXIT.OK)
+  case 'whoami': {
+    const { whoami } = await import('./commands/whoami.js')
+    whoami(mode, VERBS, VERSION, out)
+    process.exit(out.code())
+  }
+  case 'fleet': {
+    const { fleetCommand } = await import('./commands/fleet.js')
+    process.exit(await fleetCommand(args, mode.fleetPath!, out))
+  }
+  default: {
+    const legacy = LEGACY[verb.name]
+    const proc = Bun.spawn(['bun', new URL(legacy.script, import.meta.url).pathname, ...args], {
+      stdout: 'inherit', stderr: 'inherit', stdin: 'inherit',
+    })
+    const code = await proc.exited
+    process.exit(code === 130 ? 0 : code)
   }
 }
 
-// Validate stack directory
-const stackCwd = (() => {
-  if (stackName === undefined) return undefined
-  const stackDir = join(repoRoot, 'stacks', stackName)
-  if (!existsSync(stackDir)) {
-    console.error(`Stack not found: stacks/${stackName}/`)
-    process.exit(1)
-  }
-  return stackDir
-})()
+// ── helpers ─────────────────────────────────────────────────────────────────
 
-const command = filteredArgs[0] || ''
-const subArgs = filteredArgs.slice(1)
+function printHelp() {
+  out.info(`airstack ${VERSION} — manage a fleet of VPS machines from one fleet repo
 
-const COMMANDS: Record<string, { script: string; description: string }> = {
-  deploy:   { script: 'deploy.ts',   description: 'Deploy stack to VPS' },
-  status:   { script: 'status.ts',   description: 'Health check — containers, services' },
-  logs:     { script: 'logs.ts',     description: 'Stream Docker logs' },
-  ssh:      { script: 'ssh.ts',      description: 'SSH into VPS' },
-  stacks:   { script: 'stacks.ts',   description: 'List and manage stacks on VPS' },
-  env:      { script: 'env.ts',      description: 'Show resolved config for debugging' },
-  'vps-setup': { script: 'vps-setup.ts', description: 'Provision VPS (base, harden, docker, verify)' },
-}
-
-if (!command || command === '--help' || command === '-h') {
-  console.log(`
-\x1b[1mStack CLI v2\x1b[0m
-
-Usage: stack-cli [--stack <name>] <command> [args...]
-
-\x1b[36mGlobal Options:\x1b[0m
-
-  --stack <name>   Run command in the context of stacks/<name>/
-
-\x1b[36mCommands:\x1b[0m
+Usage: airstack [--fleet <path>] <verb> [args]
 `)
-  const maxLen = Math.max(...Object.keys(COMMANDS).map(k => k.length))
-  for (const [name, { description }] of Object.entries(COMMANDS)) {
-    console.log(`  ${name.padEnd(maxLen + 2)} ${description}`)
+  const w = Math.max(...VERBS.map((v) => v.name.length)) + 2
+  for (const v of VERBS) {
+    const c = checkVerb(mode, v)
+    out.info(`  ${v.name.padEnd(w)}${v.description}${c.ok ? '' : '   [off here: airstack whoami]'}`)
   }
-  // Show plugin commands if config is loadable
-  try {
-    const { loadConfig } = await import('./lib/config.js')
-    const { loadPlugins } = await import('./lib/plugin-loader.js')
-    const { getSharedPaths } = await import('./lib/resolve-file.js')
-    const projectRoot = resolve(stackCwd || process.cwd())
-    const config = loadConfig(projectRoot)
-    const plugins = await loadPlugins(config.plugins, projectRoot, getSharedPaths())
-    const pluginCmds: [string, string][] = []
-    for (const plugin of plugins) {
-      if (plugin.commands) {
-        for (const [name, cmd] of Object.entries(plugin.commands)) {
-          pluginCmds.push([name, cmd.description])
-        }
-      }
-    }
-    if (pluginCmds.length > 0) {
-      console.log(`\n\x1b[36mPlugin Commands:\x1b[0m\n`)
-      const maxPluginLen = Math.max(...pluginCmds.map(([k]) => k.length))
-      for (const [name, desc] of pluginCmds) {
-        console.log(`  ${name.padEnd(maxPluginLen + 2)} ${desc}`)
-      }
-    }
-  } catch {
-    // Config not loadable — skip plugin commands in help
-  }
-
-  console.log(`
-Run \x1b[33mstack-cli <command> --help\x1b[0m for command-specific usage.
-`)
-  process.exit(0)
+  out.info(`
+Bare verbs act on this machine only; anything remote goes through fleet / deploy / ssh.`)
 }
 
-const cmd = COMMANDS[command]
-
-if (cmd) {
-  // Built-in command — spawn subprocess
-  const scriptPath = new URL(cmd.script, import.meta.url).pathname
-  const spawnEnv = stackName !== undefined
-    ? { ...process.env, STACK_CLI_SHARED_PATH: repoRoot }
-    : process.env
-
-  const proc = Bun.spawn(['bun', scriptPath, ...subArgs], {
-    stdout: 'inherit',
-    stderr: 'inherit',
-    stdin: 'inherit',
-    cwd: stackCwd,
-    env: spawnEnv,
-  })
-  const code = await proc.exited
-  process.exit(code === 130 ? 0 : code)
-} else {
-  // Try plugin commands
+async function runLegacyPluginCommand(name: string, cmdArgs: string[]): Promise<number> {
   const { loadConfig } = await import('./lib/config.js')
   const { loadPlugins } = await import('./lib/plugin-loader.js')
-  const { getSharedPaths } = await import('./lib/resolve-file.js')
   const { createRemoteExecutor, sshConfigFromHost } = await import('./lib/ssh.js')
   const { updateConfig: _updateConfig } = await import('./lib/config-writer.js')
-
-  const projectRoot = resolve(stackCwd || process.cwd())
-  // Ensure STACK_CLI_SHARED_PATH is set for plugin commands (same as built-in commands)
-  if (stackName !== undefined) process.env.STACK_CLI_SHARED_PATH = repoRoot
-  const sharedPaths = getSharedPaths()
-
+  const projectRoot = resolve(process.cwd())
   try {
     const config = loadConfig(projectRoot)
-    const plugins = await loadPlugins(config.plugins, projectRoot, sharedPaths)
-
+    const plugins = await loadPlugins(config.plugins, projectRoot, [])
     for (const plugin of plugins) {
-      const pluginCmd = plugin.commands?.[command]
-      if (pluginCmd) {
-        const ssh = sshConfigFromHost(config.host)
-        const remote = ssh.host ? createRemoteExecutor(ssh) : undefined
-        const log = { error: console.error, warn: console.warn, info: console.log, debug: () => {} }
-        const updateConfig = (dotPath: string, value: string) => _updateConfig(projectRoot, config, dotPath, value)
-        await pluginCmd.run(subArgs, { config, ssh, remote, log, projectRoot, sharedPaths, updateConfig })
-        process.exit(0)
-      }
+      const cmd = plugin.commands?.[name]
+      if (!cmd) continue
+      const ssh = sshConfigFromHost(config.host)
+      const remote = ssh.host ? createRemoteExecutor(ssh) : undefined
+      const log = { error: console.error, warn: console.warn, info: console.log, debug: () => {} }
+      const updateConfig = (dotPath: string, value: string) => _updateConfig(projectRoot, config, dotPath, value)
+      await cmd.run(cmdArgs, { config, ssh, remote, log, projectRoot, sharedPaths: [], updateConfig })
+      return EXIT.OK
     }
-  } catch (e: any) {
-    // Config load failed — can't check plugins
+  } catch {
+    // no legacy stack.yml here: fall through to "unknown"
   }
-
-  console.error(`Unknown command: ${command}`)
-  console.error(`Run stack-cli --help for available commands.`)
-  process.exit(1)
+  out.fail(`unknown verb: ${name}`)
+  out.next('airstack help')
+  return EXIT.USAGE
 }

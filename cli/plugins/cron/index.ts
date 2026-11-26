@@ -353,6 +353,7 @@ async function postSyncHook(ctx: DeployContext, raw: unknown): Promise<void> {
 export function register(_config: unknown): Plugin {
   return {
     name: 'cron',
+    scope: 'any',
     templates: {
       'crons/.env': { src: 'templates/.env.hbs' },
     },

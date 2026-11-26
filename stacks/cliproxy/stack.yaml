@@ -1,0 +1,10 @@
+# Built-in stack: CLIProxyAPI (router-for-me/CLIProxyAPI) in a container, host network, :8317.
+# Use from a machine file:
+#   stacks:
+#     cliproxy:
+#       stack: airstack/cliproxy
+#       plugins:
+#         airstack/cliproxyapi: { memory: 1G }
+# Config + OAuth tokens are VPS-only state in <installDir>/.cliproxyapi/ (docs/CLIPROXYAPI.md).
+plugins:
+  airstack/cliproxyapi: {}

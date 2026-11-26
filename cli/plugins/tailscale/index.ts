@@ -275,6 +275,7 @@ Install + login: stack-cli vps-setup tailscale`)
 export function register(_config: unknown): Plugin {
   return {
     name: 'tailscale',
+    scope: 'machine',
     hooks: {
       'post-deploy': postDeployHook,
     },

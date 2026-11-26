@@ -1,0 +1,33 @@
+machine: airstack-test1
+host:
+  hostname: airstack-test1
+  ip: ${TEST1_IP}
+  timezone: America/Los_Angeles
+  ssh: { user: adminroot, port: 22, key: ~/.ssh/id_ed25519 }
+  users:
+    sudo: adminroot
+    stack: stackroot
+    dev: [deployuser]
+root: /home/deploy
+plugins:
+  airstack/cron:
+    defaultTimezone: America/Los_Angeles
+    crons:
+      host_alerter:
+        schedule: "*/15 * * * *"
+        # Flow map with a ref: must parse (tokens are YAML-safe)
+        env: { TELEGRAM_BOT_TOKEN: ${HOSTALERT_TELEGRAM_BOT_TOKEN}, TELEGRAM_CHAT_ID: ${HOSTALERT_TELEGRAM_CHAT_ID} }
+      # host_cleanup: { schedule: "4:00 AM", env: { X: ${COMMENTED_OUT_SECRET} } }
+  airstack/tailscale: { ports: [8317] }
+stacks:
+  cliproxy:
+    stack: airstack/cliproxy
+  devstack:
+    stack: nodestack
+    user: deployuser
+    values: { port: 3001 }
+  teststack:
+    stack: nodestack
+    user: deployuser
+    values: { port: 3002, greeting: null }
+  wiki: {}

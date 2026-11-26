@@ -17,3 +17,6 @@ stack.yml
 .deploy-logs/
 deploy-report.md
 backups/
+
+# Test fleets keep their (fake) secrets under version control
+!test/fixtures/*/.airstack/

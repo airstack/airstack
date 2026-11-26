@@ -1,0 +1,4 @@
+airstack:
+  version: 0.1.0
+fleet:
+  name: example-fleet

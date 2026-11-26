@@ -260,6 +260,7 @@ async function postSyncHook(ctx: DeployContext, raw: unknown): Promise<void> {
 export function register(_config: unknown): Plugin {
   return {
     name: 'backup',
+    scope: 'stack',
     commands: {
       backup: {
         description: 'Manage backups — verify, run, download',
