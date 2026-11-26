@@ -34,8 +34,9 @@ export function installName(r: Pick<ObtainedRelease, 'version' | 'buildId'>): st
   return r.buildId === 'release' ? r.version : `${r.version}-${r.buildId}`
 }
 
-export async function obtainRelease(target: Target, version: string, log: (s: string) => void = () => {}): Promise<ObtainedRelease> {
-  if (!COMPILED && version === VERSION) return fromSource(target, version, log)
+/** opts.source false: never build from this checkout (a local install wants the published release). */
+export async function obtainRelease(target: Target, version: string, log: (s: string) => void = () => {}, opts: { source?: boolean } = {}): Promise<ObtainedRelease> {
+  if (opts.source !== false && !COMPILED && version === VERSION) return fromSource(target, version, log)
 
   const dir = join(cacheDir(), 'releases', version)
   const file = join(dir, tarballName(version, target))

@@ -17,6 +17,8 @@ export const FLEET_USAGE = `Usage: airstack fleet <command>
   config <machine> [<instance>] merged config, each key tagged with where it came from
   check [<machine>...]          validate the fleet offline (refs, scopes, secrets, names, users, ports, networks)
   plugin <machine> <cmd> [args] run a plugin command for that machine (e.g. cf-tunnel verify)
+  update [<machine>...]         put the pinned airstack version on machines (airstack.yaml)
+  install <version> <machine>... put a given airstack version on machines
 
 Patterns ('airstack-*') and --all work where a machine list is accepted. Quote patterns.
 Container logs: airstack ssh <machine> -- sudo docker logs --tail 100 <container>`
@@ -30,6 +32,8 @@ export async function fleetCommand(args: string[], fleetPath: string, out: Outpu
     case 'config': return config(fleet, rest, out)
     case 'check': return check(fleet, rest, out)
     case 'plugin': return pluginCmd(fleet, rest, out)
+    case 'update': return (await import('./fleet-rollout.js')).fleetUpdate(fleet, rest, out)
+    case 'install': return (await import('./fleet-rollout.js')).fleetInstall(fleet, rest, out)
     case undefined: case '--help': case '-h':
       out.info(FLEET_USAGE)
       return sub ? EXIT.OK : EXIT.USAGE

@@ -19,6 +19,10 @@ const VERBS: (VerbSpec & { description: string })[] = [
   { name: 'whoami', requires: 'any', description: 'mode, machine/fleet, user, version, enabled verbs' },
   { name: 'version', requires: 'any', description: 'print the airstack version' },
   { name: 'help', requires: 'any', description: 'this help' },
+  { name: 'doctor', requires: 'any', description: 'check this machine (and fleet / nodes); --fix for safe fixes' },
+  { name: 'versions', requires: 'any', description: 'installed airstack versions on this machine' },
+  { name: 'update', requires: 'any', mutating: true, description: 'install the newest airstack release here (nodes: off by default)' },
+  { name: 'install', requires: 'any', mutating: true, description: 'install <version>: a given airstack release here' },
   { name: 'fleet', requires: 'controller', needsFleet: true, description: 'list | show | config | check | plugin' },
   { name: 'deploy', requires: 'controller', needsFleet: true, mutating: true, description: 'deploy machines (--install for first-time setup)' },
   { name: 'status', requires: 'controller', needsFleet: true, description: 'containers per stack instance on each machine' },
@@ -81,8 +85,30 @@ switch (verb.name) {
     process.exit(EXIT.OK)
   case 'whoami': {
     const { whoami } = await import('./commands/whoami.js')
-    whoami(mode, VERBS, VERSION, out)
+    whoami(mode, VERBS, core.versionLabel(), out)
     process.exit(out.code())
+  }
+  case 'doctor': {
+    const { doctorCommand } = await import('./commands/doctor/index.js')
+    process.exit(await doctorCommand(mode, args, out))
+  }
+  case 'versions': {
+    const { versionsCommand } = await import('./commands/versions.js')
+    process.exit(await versionsCommand(mode, out))
+  }
+  case 'update':
+  case 'install': {
+    if (verb.name === 'install' && !args[0]) {
+      out.fail('usage: airstack install <version>')
+      process.exit(EXIT.USAGE)
+    }
+    const { updateCommand } = await import('./commands/versions.js')
+    const code = await updateCommand(mode, verb.name === 'install' ? args[0] : undefined, out)
+    if (code > EXIT.WARN) process.exit(code)
+    // doctor after a version change: the one place for post-update checks.
+    const { doctorCommand } = await import('./commands/doctor/index.js')
+    out.info('')
+    process.exit(Math.max(code, await doctorCommand(mode, [], out)))
   }
   case 'fleet': {
     const { fleetCommand } = await import('./commands/fleet.js')
