@@ -53,8 +53,8 @@ leak scan before commits). Commit + push to airstack/airstack as work lands.
 - [x] Host-status scripts ship only to units with host_ crons (`deployExclude`).
 - [x] DECISION: box compose file stays `docker-compose.yml` (renaming breaks running machines and the
       host scripts; no user-visible gain).
-- [x] CHANGELOG, CI + release workflows (parked in `devutils/github-workflows/`: the push token has no
-      workflow scope).
+- [x] CHANGELOG, CI + release workflows in `.github/workflows/` (moved there once the token had
+      the workflow scope).
 - [x] README, docs for every verb (`docs/cli/`), example fleet (`examples/fleet/`), `airstack init`.
 - [x] LICENSE: MIT (owner decision, 2026-11-26).
 - [x] End-to-end from a clean VM (airstack-test2, fresh OrbStack Ubuntu 26.04 arm64): one `deploy --install` ran base, harden, docker, rootless, verify, reboot, finalize (port 22 closed), marker, binary, machine unit + 2 stacks (root daemon + rootless dev user), HTTP 200 on both; doctor clean; airstack-admin member reads history without full sudo.
