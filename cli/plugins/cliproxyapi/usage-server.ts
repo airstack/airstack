@@ -215,7 +215,7 @@ async function ensureSource(ctx: DeployContext, us: UsageServerConfig): Promise<
   if (r.exitCode === 3 || r.stdout.includes('DIRTY')) {
     ctx.errors.push({
       phase: 'build',
-      message: `[usage-server] ${p.src} has local changes — not touching it. Commit/stash them or remove the folder.`,
+      message: `[usage-server] ${p.src} has local changes, so deploy leaves it alone. Commit or stash the changes, or remove the folder.`,
       fatal: false,
     })
     return false
@@ -251,8 +251,8 @@ export async function usageServerBuild(ctx: DeployContext, us: UsageServerConfig
   const newest = newestDeployed(inst)
   if (newest && compareVersions(newest, us.version) > 0) {
     ctx.log.warn(
-      `[usage-server] the VPS has v${newest}, but this checkout pins v${us.version}. ` +
-      `Deploying will run the OLDER version (container recreate on 'up'). ` +
+      `[usage-server] the machine has v${newest}, but this checkout pins v${us.version}. ` +
+      `This deploy runs the OLDER version ('up' recreates the container). ` +
       `Update the pin first: bun run bump-usage-server ${newest}`,
     )
   }
@@ -265,7 +265,7 @@ export async function usageServerBuild(ctx: DeployContext, us: UsageServerConfig
   let installedNewPlugin = false
 
   if (needImage || needPlugin) {
-    ctx.log.info(`[usage-server] building ${tag} on the VPS${needImage ? ' (image)' : ''}${needPlugin ? ' (plugin)' : ''}`)
+    ctx.log.info(`[usage-server] building ${tag} on the machine${needImage ? ' (image)' : ''}${needPlugin ? ' (plugin)' : ''}`)
     if (!(await ensureSource(ctx, us))) return
     const rev = await out(ctx, `git -C ${shq(p.src)} rev-parse HEAD`)
 
@@ -338,7 +338,7 @@ export async function usageServerBuild(ctx: DeployContext, us: UsageServerConfig
   }
 
   if (steps.length) {
-    ctx.log.warn('[usage-server] ACTION NEEDED (deploy did not restart the proxy)')
+    ctx.log.warn('[usage-server] ACTION NEEDED: deploy did not restart the proxy. Do these steps:')
     for (const s of steps) ctx.log.warn(`  ${s}`)
   }
   ctx.phaseStatus.push({ phase: 'build', success: true, message: `usage-server v${us.version}${steps.length ? ' — action needed, see log' : ' ready'}` })

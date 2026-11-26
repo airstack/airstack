@@ -53,9 +53,9 @@ fi
 CURRENT_STEP="docker group"
 # Only the stack owner. The admin has sudo already; dev users use rootless Docker.
 usermod -aG docker "${APP_USER}" 2>/dev/null || true
-echo "  ${APP_USER} added to docker group (root-equivalent: keep it unreachable)"
+echo "  ${APP_USER} added to the docker group. This gives root-level power, so no one may log in as ${APP_USER}."
 for u in $(getent group docker | cut -d: -f4 | tr ',' ' '); do
-  [ "${u}" = "${APP_USER}" ] || echo "  WARNING: ${u} is in the docker group (root-equivalent). Remove: gpasswd -d ${u} docker" >&2
+  [ "${u}" = "${APP_USER}" ] || echo "  WARNING: ${u} is in the docker group (this gives root-level power). Remove it: gpasswd -d ${u} docker" >&2
 done
 
 # Enable + start
@@ -98,16 +98,16 @@ EOF
 systemctl restart docker
 
 if ! systemctl is-active --quiet docker; then
-  echo "ERROR: Docker failed to restart after daemon.json update" >&2
-  echo "Debug: cat /etc/docker/daemon.json | python3 -m json.tool" >&2
+  echo "ERROR: Docker did not restart after the daemon.json change" >&2
+  echo "To check the file: python3 -m json.tool /etc/docker/daemon.json" >&2
   exit 1
 fi
-echo "  daemon.json applied (localhost-only, no-new-privileges)"
+echo "  daemon.json applied: ports publish on 127.0.0.1 by default; containers cannot gain new privileges"
 
 # ── 3. Install Sysbox (optional) ─────────────────────────────────────────────
 
 if [ "${INSTALL_SYSBOX}" != "true" ]; then
-  echo "==> Sysbox: skipped (INSTALL_SYSBOX != true)"
+  echo "==> Sysbox: skipped (not turned on; set sysbox: true to install it)"
   CURRENT_STEP=""
   echo ""
   echo "Docker setup complete."
@@ -124,8 +124,8 @@ if systemctl is-active --quiet sysbox 2>/dev/null; then
   if [ "${INSTALLED_VERSION}" = "${SYSBOX_VERSION}" ]; then
     echo "==> Sysbox ${SYSBOX_VERSION} already installed"
   else
-    echo "==> Sysbox installed but version mismatch (${INSTALLED_VERSION} vs ${SYSBOX_VERSION})"
-    echo "  Proceeding with reinstall..."
+    echo "==> Sysbox ${INSTALLED_VERSION} is installed, but ${SYSBOX_VERSION} is wanted"
+    echo "  Reinstalling..."
   fi
 else
   echo "==> Installing Sysbox ${SYSBOX_VERSION}..."
@@ -188,7 +188,7 @@ systemctl restart sysbox
 if systemctl show sysbox-mgr --property=ExecStart | grep -q 'disable-ovfs-on-idmapped-mount'; then
   echo "  sysbox-mgr override active"
 else
-  echo "WARNING: sysbox-mgr override may not have applied" >&2
+  echo "WARNING: cannot confirm that the sysbox-mgr override is active" >&2
 fi
 
 # ── Done ─────────────────────────────────────────────────────────────────────

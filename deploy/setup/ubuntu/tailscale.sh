@@ -66,7 +66,7 @@ else
     shred -u "$KEYFILE" 2>/dev/null || rm -f "$KEYFILE"
     [ "$rc" -eq 0 ] || exit "$rc"
   else
-    echo "  No TAILSCALE_AUTHKEY — open the login URL below to authorize this machine."
+    echo "  No TAILSCALE_AUTHKEY. Open the login URL below to let this machine join the tailnet."
     tailscale up --hostname="${VPS_HOSTNAME}" --timeout=600s
   fi
 fi
@@ -80,10 +80,10 @@ fi
 CURRENT_STEP="netfilter nodivert"
 tailscale set --netfilter-mode=nodivert
 if iptables -C INPUT -j ts-input 2>/dev/null; then
-  echo "ERROR: INPUT still jumps to ts-input after nodivert" >&2
+  echo "ERROR: tailnet traffic still skips UFW after --netfilter-mode=nodivert (INPUT still jumps to ts-input)" >&2
   exit 1
 fi
-echo "  Netfilter: nodivert (UFW governs tailscale0)"
+echo "  Netfilter: nodivert (UFW rules now apply to tailscale0)"
 
 # WireGuard port for direct (non-relayed) peer connections. Only tailscaled
 # listens here; outbound-initiated connections work even without it.

@@ -14,12 +14,12 @@ import type { RemoteExecutor, SSHConfig } from '../types.js'
 export async function detectDistro(remote: RemoteExecutor): Promise<string> {
   const result = await remote.run('grep ^ID= /etc/os-release')
   if (result.exitCode !== 0) {
-    throw new Error('Failed to detect distro: could not read /etc/os-release')
+    throw new Error('Cannot detect the Linux distribution: cannot read /etc/os-release')
   }
   // ID=ubuntu → ubuntu
   const match = result.stdout.trim().match(/^ID=(.+)$/)
   if (!match) {
-    throw new Error(`Failed to parse distro from: ${result.stdout.trim()}`)
+    throw new Error(`Cannot find the distribution ID in /etc/os-release: ${result.stdout.trim()}`)
   }
   return match[1].replace(/"/g, '').toLowerCase()
 }

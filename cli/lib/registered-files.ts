@@ -74,7 +74,8 @@ const HOST_FILE_PATTERN = /^\/etc\/(cron\.d|logrotate\.d|stacks|airstack\/stacks
 
 /**
  * Validate a host file path is safe for use in shell commands.
- * Allows paths under /etc/cron.d/, /etc/logrotate.d/, /etc/airstack/stacks/, legacy /etc/stacks/,
+ * Allows paths under /etc/cron.d/, /etc/logrotate.d/, /etc/airstack/stacks/, legacy /etc/stacks/ (kept so cleanup
+ * can remove files left by stack-cli, airstack's predecessor),
  * plus any custom manifest directory.
  */
 export function isValidHostFilePath(path: string, extraDirs: string[] = []): boolean {

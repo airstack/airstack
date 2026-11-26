@@ -97,7 +97,7 @@ async function updateNode(version: string, out: Output): Promise<number> {
   }
   const local = createLocalExecutor()
   const target = await remoteTarget(local)
-  if (!target) { out.fail('unsupported OS/CPU'); return EXIT.FAIL }
+  if (!target) { out.fail('no airstack release for this OS and CPU type'); return EXIT.FAIL }
   try {
     const rel = await obtainRelease(target, version, (s) => out.next(s), { source: false })
     const r = await pushRelease(local, rel)

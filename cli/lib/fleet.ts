@@ -343,7 +343,7 @@ export function loadMachine(fleet: Fleet, name: string): Machine {
   const instances: StackInstance[] = []
   const stacksRaw = m.stacks ?? {}
   if (!isPlainObject(stacksRaw)) {
-    issues.push({ level: 'fail', file: mFile, key: 'stacks', message: 'must be a map of instance name → overlay (not a list)' })
+    issues.push({ level: 'fail', file: mFile, key: 'stacks', message: 'must be a map of instance name → settings for that instance (not a list)' })
   } else {
     const stacksDisplay = (mf.display.stacks ?? {}) as Plain
     for (const [inst, overlayRaw] of Object.entries(stacksRaw)) {
@@ -427,7 +427,7 @@ function finishInstance(
   let userKind: 'stack' | 'dev' = 'stack'
   if (user === host.users.stack) userKind = 'stack'
   else if (host.users.dev.includes(user)) userKind = 'dev'
-  else issues.push({ level: 'fail', file: mFile, key: `${key}.user`, message: `'${user}' is neither host.users.stack (${host.users.stack}) nor in host.users.dev` })
+  else issues.push({ level: 'fail', file: mFile, key: `${key}.user`, message: `'${user}' must be host.users.stack (${host.users.stack}) or a user listed in host.users.dev` })
 
   setDefault('installDir', userKind === 'dev' ? `/home/${user}/airstack/${name}` : `${machineRoot}/stacks/${name}`)
   setDefault('composeProject', name)
@@ -436,7 +436,7 @@ function finishInstance(
   if (userKind === 'dev' && (installDir === machineRoot || installDir.startsWith(machineRoot + '/'))) {
     issues.push({
       level: 'fail', file: mFile, key: `${key}.installDir`,
-      message: `a dev-user stack cannot live under ${machineRoot} (the stack user's 750 dir)`,
+      message: `a stack run by a dev user cannot live under ${machineRoot}: only the stack user can enter that folder (mode 750)`,
     })
   }
   const composeProject = String(config.composeProject)
@@ -464,7 +464,7 @@ function checkStackCrons(inst: StackInstance, mFile: string, issues: Issue[]) {
     if (name.startsWith('host_')) {
       issues.push({
         level: 'fail', file: mFile, key: `stacks.${inst.name}.plugins.airstack/cron.crons.${name}`,
-        message: 'host_ crons are machine-level only (move to the machine file plugins)',
+        message: 'host_ crons are machine-level only. Move them to plugins.cron in the machine file.',
       })
     }
   }

@@ -118,7 +118,8 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
 
   if (!remote || !prep || f.dryRun) return failed ? { ok: false, note: `${failed} unit(s) failed` } : { ok: true, note: f.stage ? 'staged' : 'dry-run ok' }
 
-  // stack-cli kept manifests in /etc/stacks; orphan cleanup empties it, then drop the dir (only if empty).
+  // Legacy cleanup: stack-cli (airstack's predecessor) kept manifests in /etc/stacks. Orphan cleanup
+  // empties it; then drop the dir (only if empty).
   await remote.run(`sudo rmdir ${LEGACY_MANIFEST_DIR} 2>/dev/null || true`)
 
   for (const [inst, s] of prep.orphans) {
@@ -128,8 +129,8 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
       continue
     }
     const ok = await pruneInstance(remote, s)
-    if (ok) out.ok(`${name}/${inst}: pruned (compose down, crons and manifest removed; ${s.installDir} kept)`)
-    else out.fail(`${name}/${inst}: prune failed`)
+    if (ok) out.ok(`${name}/${inst}: removed. Containers stopped; crons and manifest deleted; files in ${s.installDir} kept.`)
+    else out.fail(`${name}/${inst}: prune failed: docker compose down did not succeed`)
   }
   // Unpruned orphans stay listed in the marker so the next deploy still sees them.
   if (f.prune && prep.orphans.length && !(await writeMarker(remote, markerYaml(fleet, m, prep.version, {})))) {

@@ -85,7 +85,7 @@ describe('pre-sync: local script permission check', () => {
 
     const fatal = ctx.errors.find(e => e.fatal && e.phase === 'pre-sync')
     expect(fatal).toBeDefined()
-    expect(fatal!.message).toContain('Scripts missing execute permission')
+    expect(fatal!.message).toContain('Staged scripts have no execute permission')
     expect(fatal!.message).toContain('plugins/run.sh')
     expect(fatal!.message).toContain('chmod +x')
   })
@@ -120,7 +120,7 @@ describe('pre-sync: local script permission check', () => {
 
     await preSync(ctx)
 
-    const fatal = ctx.errors.find(e => e.fatal && e.message.includes('Scripts missing'))
+    const fatal = ctx.errors.find(e => e.fatal && e.message.includes('no execute permission'))
     expect(fatal).toBeUndefined()
     expect(ctx.phaseStatus).toHaveLength(1)
     expect(ctx.phaseStatus[0].success).toBe(true)

@@ -1,12 +1,12 @@
 // Built-in Tailscale plugin — exposes selected host ports to the tailnet.
 //
-// Install + login is a provisioning step: `stack-cli vps-setup tailscale`.
+// Install + login is a provisioning step: `airstack deploy <machine> --install --step tailscale`.
 // This plugin reconciles which ports the tailnet may reach, on every deploy:
 // each listed port gets a UFW allow rule on the tailscale0 interface (tagged
 // with a comment), and tagged rules no longer listed are removed. Nothing is
 // opened on the public interface.
 //
-// Config schema (under plugins.tailscale in stack.yml):
+// Config schema (under plugins.tailscale in machines/<m>.yaml or airstack.yaml):
 //   authKey: ${TAILSCALE_AUTHKEY:-}   # optional, vps-setup tailscale only
 //   hostname: testbox                 # optional tailnet name (default host.hostname)
 //   ports:                            # tailnet-reachable ports
@@ -33,6 +33,8 @@
 
 import type { Plugin, DeployContext, PluginCommandContext, RemoteExecutor, DeployLogger } from '../../types.js'
 
+// Legacy name, kept on purpose: running machines already carry UFW rules with this comment,
+// and apply finds the rules it owns by it. Renaming would orphan those rules.
 export const RULE_COMMENT = 'stack-cli-tailscale'
 const IFACE = 'tailscale0'
 
@@ -147,7 +149,7 @@ const ufwSpec = (r: PortRule) => `in on ${IFACE} to any port ${r.port} proto ${r
 async function applyRules(remote: RemoteExecutor, desired: PortRule[], log: DeployLogger): Promise<boolean> {
   const iface = await remote.run(`ip link show ${IFACE} >/dev/null 2>&1 && echo ok`)
   if (iface.stdout.trim() !== 'ok') {
-    log.warn(`[tailscale] ${IFACE} not found — run: stack-cli vps-setup tailscale`)
+    log.warn(`[tailscale] ${IFACE} not found. Install Tailscale first: airstack deploy <machine> --install --step tailscale`)
     return false
   }
 
@@ -155,7 +157,7 @@ async function applyRules(remote: RemoteExecutor, desired: PortRule[], log: Depl
   // accepts all tailscale0 traffic before UFW — these rules would be moot.
   const divert = await remote.run('sudo iptables -C INPUT -j ts-input 2>/dev/null && echo divert')
   if (divert.stdout.trim() === 'divert') {
-    log.warn(`[tailscale] netfilter divert is on — ALL host ports are open to the tailnet; re-run: airstack deploy <machine> --install --step tailscale`)
+    log.warn(`[tailscale] Tailscale netfilter mode lets tailnet traffic skip the firewall (UFW). ALL host ports are open to the tailnet. To fix, run: airstack deploy <machine> --install --step tailscale`)
   }
 
   const status = await remote.run('sudo ufw status')
@@ -189,7 +191,7 @@ async function applyServe(
 
   for (const f of serve) {
     if (!ports.some((p) => p.proto === 'tcp' && p.port === f.port)) {
-      log.warn(`[tailscale] serve ${f.port} is not in plugins.tailscale.ports — UFW will block it on ${IFACE}`)
+      log.warn(`[tailscale] serve port ${f.port} is not in plugins.tailscale.ports, so the firewall (UFW) blocks it on ${IFACE}. Add it to ports.`)
     }
   }
 
@@ -234,7 +236,7 @@ async function tailscaleCommand(args: string[], ctx: PluginCommandContext): Prom
   const command = args[0] || ''
   const cfg = (ctx.config.plugins.tailscale ?? {}) as Record<string, unknown>
   if (!ctx.remote && (command === 'status' || command === 'apply')) {
-    console.error('No VPS configured')
+    console.error('No machine address: set host.ip in the machine file')
     process.exit(1)
   }
 
@@ -256,7 +258,7 @@ async function tailscaleCommand(args: string[], ctx: PluginCommandContext): Prom
       break
     }
     case '--help': case '-h': case '':
-      console.log(`Usage: stack-cli tailscale <command>
+      console.log(`Usage: airstack fleet plugin <machine> tailscale <command>
 
 Commands:
   status   Show tailnet peers, this box's tailnet IP, and tailnet port rules
@@ -264,10 +266,10 @@ Commands:
            make TCP forwards match plugins.tailscale.serve
            (also runs automatically on deploy)
 
-Install + login: stack-cli vps-setup tailscale`)
+Install + login: airstack deploy <machine> --install --step tailscale`)
       break
     default:
-      console.error(`Unknown tailscale command: ${command}. Run: stack-cli tailscale --help`)
+      console.error(`Unknown tailscale command: ${command}. Run: airstack fleet plugin <machine> tailscale --help`)
       process.exit(1)
   }
 }

@@ -254,7 +254,7 @@ describe('phase: pre-sync (VPS reachability)', () => {
 
     expect(ctx.errors).toHaveLength(1)
     expect(ctx.errors[0].fatal).toBe(true)
-    expect(ctx.errors[0].message).toContain('No remote executor configured')
+    expect(ctx.errors[0].message).toContain('No SSH connection is set up')
   })
 
   it('pushes fatal error when VPS is unreachable', async () => {
@@ -267,7 +267,7 @@ describe('phase: pre-sync (VPS reachability)', () => {
 
     expect(ctx.errors).toHaveLength(1)
     expect(ctx.errors[0].fatal).toBe(true)
-    expect(ctx.errors[0].message).toContain('VPS unreachable')
+    expect(ctx.errors[0].message).toContain('Cannot reach the machine over SSH')
     expect(ctx.errors[0].message).toContain('connection refused')
   })
 
@@ -282,7 +282,7 @@ describe('phase: pre-sync (VPS reachability)', () => {
     expect(ctx.errors).toHaveLength(0)
     expect(ctx.phaseStatus).toHaveLength(1)
     expect(ctx.phaseStatus[0].success).toBe(true)
-    expect(ctx.phaseStatus[0].message).toBe('VPS reachable')
+    expect(ctx.phaseStatus[0].message).toBe('Machine reachable over SSH')
   })
 })
 
@@ -463,7 +463,7 @@ describe('phase: post-sync', () => {
 
     await postSync(ctx)
 
-    expect(ctx.errors.some(e => e.fatal && e.message.includes('docker-compose.yml missing'))).toBe(true)
+    expect(ctx.errors.some(e => e.fatal && e.message.includes('docker-compose.yml is missing'))).toBe(true)
   })
 
   it('pushes fatal error when remote not configured', async () => {
@@ -633,7 +633,7 @@ describe('phase: dry-run', () => {
 
     await dryRun(ctx)
 
-    expect(ctx.errors.some(e => e.fatal && e.message.includes('config validation failed'))).toBe(true)
+    expect(ctx.errors.some(e => e.fatal && e.message.includes('docker compose config found errors'))).toBe(true)
   })
 })
 

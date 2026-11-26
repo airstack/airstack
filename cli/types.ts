@@ -57,16 +57,16 @@ export interface DeployConfig {
   sync: SyncConfig
   hooks: Record<string, string>
   report: ReportConfig
-  /** Staging directory relative to projectRoot (default: '.deploy') */
+  /** Staging directory for this unit (fleet deploys: .airstack/deploy/<machine>/<unit>/) */
   stagingDir: string
-  /** Deploy logs directory relative to projectRoot, or false to disable (default: '.deploy-logs') */
+  /** Deploy logs directory for this unit (fleet deploys: .airstack/logs/<machine>/<unit>/), or false to disable */
   deployLogs: string | false
 }
 
 export interface StackConfig {
-  /** Absolute path to stack.yml (or override) */
+  /** Absolute path to the YAML file this unit came from (machines/<m>.yaml or stacks/<s>/stack.yaml) */
   stackFile: string
-  /** Absolute path to env file (default: .env) */
+  /** Legacy env file path. Fleet deploys set it to '' (secrets live in .airstack/secrets/*.jsonc). */
   envFile: string
   /** Whether to skip git safety checks */
   allowUnsafeGit: boolean
@@ -196,7 +196,7 @@ export interface PluginCommandContext {
   log: DeployLogger
   projectRoot: string
   sharedPaths: string[]
-  /** Write a config value to stack.yml (or .env if the key uses a ${VAR} reference). */
+  /** Write a config value back to the fleet config. Fleet deploys do not support this yet (it throws). */
   updateConfig: (dotPath: string, value: string) => void
 }
 
@@ -233,7 +233,7 @@ export interface Plugin {
   templates?: Record<string, TemplateEntry>
   /** Docker Compose service templates contributed by this plugin.
    *  Rendered during stage after all enrichment, injected into docker-compose.yml.hbs.
-   *  Users can override via composeServices.template in the plugin's stack.yml config. */
+   *  Users can override via composeServices.template in the plugin's config block. */
   composeServices?: ComposeService[]
   /** Report section — rendered into the deploy report after all phases */
   report?: ReportSection
@@ -305,7 +305,8 @@ export interface DeployContext {
   force: boolean
 
   /**
-   * Write a config value to stack.yml (or .env if the key uses a ${VAR} reference).
+   * Write a config value back to the fleet config. Fleet deploys do not support this yet:
+   * the call throws and names the .airstack/secrets/<machine>.jsonc file to edit by hand.
    * Mutates ctx.config in place — no assignment needed.
    *
    * Usage: ctx.updateConfig('stack.myService.apiToken', token)

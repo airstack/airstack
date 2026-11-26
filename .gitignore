@@ -10,13 +10,8 @@ tmp/
 .airstack/
 .env
 .env.*
-
-# Transitional (stack-cli layout, removed once the phase 1 loader lands)
-stack.yml
-.deploy/
-.deploy-logs/
-deploy-report.md
-backups/
+# ...but plugin templates named .env.hbs are source code
+!cli/plugins/*/templates/.env.hbs
 
 # Test fleets keep their (fake) secrets under version control
 !test/fixtures/*/.airstack/

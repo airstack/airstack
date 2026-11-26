@@ -1,7 +1,7 @@
 /**
  * Phase 02b: Sync
  *
- * Core: rsync .deploy/ → installDir on VPS.
+ * Core: rsync the staging dir (.airstack/deploy/<machine>/<unit>/) → installDir on the machine.
  * Sync behavior controlled by deploy.sync config:
  *   - default: 'delete' | 'preserve' (default --delete behavior)
  *   - preserve: [] (dirs that never get --delete)
@@ -20,14 +20,14 @@ export async function sync(ctx: DeployContext): Promise<void> {
   const syncConfig = config.deploy.sync
 
   if (!remote) {
-    ctx.errors.push({ phase: 'sync', message: 'No remote executor configured', fatal: true })
+    ctx.errors.push({ phase: 'sync', message: 'No SSH connection is set up for this deploy (no remote executor)', fatal: true })
     return
   }
 
   // Create install dir
   await remote.run(`sudo mkdir -p ${installDir}/logs`)
 
-  // Sync each entry in .deploy/ to installDir
+  // Sync each entry in the staging dir to installDir
   let syncErrors = 0
   for (const entry of readdirSync(deployDir)) {
     const src = join(deployDir, entry)
@@ -64,7 +64,7 @@ export async function sync(ctx: DeployContext): Promise<void> {
 
   // TODO: VPS git tracking — disabled pending .gitignore generation for new layout
 
-  ctx.phaseStatus.push({ phase: 'sync', success: true, message: 'Synced to VPS' })
+  ctx.phaseStatus.push({ phase: 'sync', success: true, message: 'Files synced to the machine' })
 }
 
 /**

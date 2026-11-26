@@ -110,7 +110,7 @@ function checkFromReport(c: { script: string; env?: string }, verbose: boolean, 
 export function reportCmd(info: NodeInfo, args: string[], out: Output): number {
   const c = cronScript(info, 'host_alerter_report', 'host_alerter.sh')
   if (!c) {
-    out.fail('no host report on this machine: the machine has no airstack/cron host_alerter_report cron')
+    out.fail('no host report: this machine has no host_alerter_report cron (plugin airstack/cron)')
     return EXIT.FAIL
   }
   const r = runWithEnv(c.script, ['--report'], c.env, { REPORT_OUTPUT: 'stdout', REPORT_FULL: String(args.includes('--full')) })

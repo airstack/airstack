@@ -17,7 +17,7 @@
 # Pipes inside label/detail become '/'. Labels starting with "reachable:" form the
 # "Reachable from the internet" block in the Telegram section.
 #
-# Knobs (environment; cron `env:` of host_alerter_report in stack.yml). Defaults in brackets.
+# Knobs (environment; cron `env:` of host_alerter_report in the fleet config). Defaults in brackets.
 #   SECURITY_BUILTIN=true                 [true]  false = run only the custom security.d checks
 #   SECURITY_SKIP="..."                   []      space list of built-in checks to skip:
 #        firewall tailscale reachability docker tunnel access cloudflared ssh sshsources

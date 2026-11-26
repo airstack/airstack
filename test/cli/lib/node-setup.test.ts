@@ -42,6 +42,6 @@ describe('ensureAdminGroup', () => {
       .toBe('cannot add ghost to airstack-admin (does the user exist?)')
     expect((await ensureAdminGroup(fakeRemote(() => undefined, () => 1), [])).note).toBe('cannot upload the sudoers rule')
     const visudoFails = fakeRemote((c) => c.startsWith('sudo visudo') ? { exitCode: 1 } : undefined)
-    expect(await ensureAdminGroup(visudoFails, [])).toEqual({ ok: false, note: 'the sudoers rule did not pass visudo; not installed' })
+    expect(await ensureAdminGroup(visudoFails, [])).toEqual({ ok: false, note: 'the sudoers rule failed the visudo check, so it was not installed' })
   })
 })

@@ -85,6 +85,7 @@ export async function pruneInstance(remote: RemoteExecutor, s: MarkerStack): Pro
   if (!/^[a-z0-9][a-z0-9_-]*$/.test(s.composeProject) || !/^\/[\w./-]+$/.test(s.installDir) || !/^[a-z_][a-z0-9_-]*$/.test(s.user)) return false
   const ctx = { config: { host: { appUser: s.user }, stack: { installDir: s.installDir, projectName: s.composeProject, runUserKind: s.userKind } } } as unknown as DeployContext
   const down = await remote.run(`${composeCommand(ctx, 'down')} 2>&1`)
+  // /etc/stacks/ is the legacy stack-cli manifest dir; removed too so old machines leave no orphan.
   await remote.run(`sudo rm -f /etc/cron.d/${s.composeProject}_* /etc/logrotate.d/${s.composeProject} /etc/airstack/stacks/${s.composeProject}.env /etc/stacks/${s.composeProject}.env`)
   return down.exitCode === 0
 }

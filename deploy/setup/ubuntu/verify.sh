@@ -105,7 +105,7 @@ else
 fi
 
 if ufw status | grep -qE "^22/tcp\s+ALLOW" && [ "${SSH_PORT}" != "22" ]; then
-  warn "Port 22 still allowed (run harden --finalize to close)"
+  warn "Port 22 is still open (to close it: airstack deploy <machine> --install --step harden --finalize)"
 else
   pass "Port 22 not open (or is the SSH port)"
 fi
@@ -132,7 +132,7 @@ if [ -f /etc/ssh/sshd_config.d/hardening.conf ]; then
   if grep -qE "^Port ${SSH_PORT}$" /etc/ssh/sshd_config.d/hardening.conf; then
     pass "SSH port set to ${SSH_PORT}"
   else
-    warn "SSH port in config doesn't match expected (${SSH_PORT})"
+    warn "SSH port in hardening.conf is not ${SSH_PORT}"
   fi
 else
   fail "SSH hardening config not found"
@@ -177,12 +177,12 @@ fi
 DEV_USERS="${DEV_USERS:-}"
 for u in $(getent group docker | cut -d: -f4 | tr ',' ' '); do
   [ "${u}" = "${APP_USER}" ] && continue
-  warn "${u} is in the docker group (root-equivalent) — dev users should use rootless Docker (vps-setup rootless)"
+  warn "${u} is in the docker group (root-level power). Dev users should use rootless Docker (airstack deploy <machine> --install --step rootless)"
 done
 shell="$(getent passwd "${APP_USER}" | cut -d: -f7)"
 case "${shell}" in
   */nologin|*/false) pass "${APP_USER} has no login shell" ;;
-  *) warn "${APP_USER} has shell ${shell}; the stack owner is root-equivalent and should use /usr/sbin/nologin" ;;
+  *) warn "${APP_USER} has shell ${shell}. The stack owner has root-level power and should use /usr/sbin/nologin" ;;
 esac
 if [ -e "/home/${APP_USER}/.ssh/authorized_keys" ] || [ -e "/var/lib/${APP_USER}/.ssh/authorized_keys" ]; then
   warn "${APP_USER} has SSH authorized_keys; the stack owner must not be reachable over SSH"
@@ -190,7 +190,7 @@ fi
 for dev in ${DEV_USERS//,/ }; do
   id "${dev}" &>/dev/null || { fail "dev user ${dev} does not exist"; continue; }
   uid="$(id -u "${dev}")"
-  if [ -S "/run/user/${uid}/docker.sock" ]; then pass "${dev} has a rootless Docker socket"; else warn "${dev} has no rootless Docker (vps-setup rootless)"; fi
+  if [ -S "/run/user/${uid}/docker.sock" ]; then pass "${dev} has a rootless Docker socket"; else warn "${dev} has no rootless Docker (airstack deploy <machine> --install --step rootless)"; fi
 done
 echo ""
 

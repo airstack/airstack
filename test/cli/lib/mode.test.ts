@@ -102,7 +102,7 @@ describe('node mode (marker present)', () => {
   it('a writable marker is untrusted: mutating verbs refused, roles fall back to node', () => {
     marker('machine: n1\nroles: [node, controller]\ncontroller: { fleet: /x }\n', 0o666)
     const m = resolve()
-    expect(m.marker?.problem).toMatch(/group\/world writable/)
+    expect(m.marker?.problem).toMatch(/can be written by group or others/)
     expect(m.roles).toEqual(['node'])
     expect(checkVerb(m, RESTART)).toMatchObject({ ok: false })
     expect(checkVerb(m, STATUS).ok).toBe(true) // read-only verbs still work

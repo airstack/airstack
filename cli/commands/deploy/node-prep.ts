@@ -53,7 +53,7 @@ export async function prepareNode(remote: RemoteExecutor, fleet: Fleet, m: Machi
   out.ok(`${name}: ${bin.note}`)
   const nodeVersion = bin.version ?? version
 
-  if (!(await writeRedactSecrets(remote, m))) out.warn(`${name}: could not write /etc/airstack/redact.json (node output may show fewer redactions)`)
+  if (!(await writeRedactSecrets(remote, m))) out.warn(`${name}: could not write /etc/airstack/redact.json. Node output may hide fewer secrets.`)
   const g = await ensureAdminGroup(remote, m.host.users.admins)
   if (!g.ok) out.warn(`${name}: ${g.note}`)
 

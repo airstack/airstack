@@ -61,7 +61,7 @@ export async function ensureAdminGroup(remote: RemoteExecutor, admins: string[])
     writeFileSync(join(dir, 's'), rule)
     if ((await remote.rsync(join(dir, 's'), tmp)).exitCode !== 0) return { ok: false, note: 'cannot upload the sudoers rule' }
     const r = await remote.run(`sudo visudo -cqf ${tmp} && sudo install -o root -g root -m 440 ${tmp} ${SUDOERS_PATH}; rc=$?; sudo rm -f ${tmp}; exit $rc`)
-    if (r.exitCode !== 0) return { ok: false, note: 'the sudoers rule did not pass visudo; not installed' }
+    if (r.exitCode !== 0) return { ok: false, note: 'the sudoers rule failed the visudo check, so it was not installed' }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

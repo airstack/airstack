@@ -1,7 +1,7 @@
 /**
  * vars.ts — `${VAR}` / `${VAR:-default}` references in fleet YAML, resolved AFTER parsing.
  *
- * stack-cli substituted secrets into the YAML text before parsing, so a value containing
+ * The older tool (stack-cli) substituted secrets into the YAML text before parsing, so a value containing
  * `:`, `#`, quotes or a newline could change the config's structure. Here:
  *   1. each `${…}` in the text becomes an inert token (`AIRSTACKVAR<n>Z`, plain alphanumerics,
  *      valid anywhere a YAML scalar is, including flow maps like `{ a: ${X} }`)

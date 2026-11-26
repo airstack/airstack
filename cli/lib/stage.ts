@@ -39,7 +39,7 @@ export interface StageOpts {
 }
 
 /**
- * Stage orchestrator — builds the .deploy/ directory from:
+ * Stage orchestrator — builds the unit's staging dir (.airstack/deploy/<machine>/<unit>/) from:
  *   1. deploy/ base directory (copied as-is)
  *   2. templates: section (rendered .hbs / copied static files)
  *   3. stack manifest at etc/stacks/{projectName}.env
@@ -47,12 +47,12 @@ export interface StageOpts {
 export function stage(opts: StageOpts): void {
   const { projectRoot, sharedPaths, config, deployDir, extraContext, errors, manifestEntries } = opts
 
-  // 1. Validate and clean .deploy/ directory
+  // 1. Validate and clean the staging dir
   validateDeployDir(deployDir, projectRoot)
   rmSync(deployDir, { recursive: true, force: true })
   mkdirSync(deployDir, { recursive: true })
 
-  // 2. Copy deploy/ base into .deploy/ (optional — no deploy/ dir is fine)
+  // 2. Copy deploy/ base into the staging dir (optional — no deploy/ dir is fine)
   // IMPORTANT: deploy/ base only comes from projectRoot, NOT sharedPaths.
   // Shared paths are for templates and plugins, not for the deploy base layer.
   // Each stack controls its own deploy/ directory contents.
@@ -72,7 +72,7 @@ export function stage(opts: StageOpts): void {
     processTemplates(config.templates, context, projectRoot, sharedPaths, deployDir, errors)
   }
 
-  // 4. Generate stack manifest at .deploy/etc/stacks/{projectName}.env
+  // 4. Generate stack manifest at <staging>/etc/stacks/{projectName}.env
   // Post-sync promotes this to the VPS at manifest.destination (default /etc/airstack/stacks/).
   const projectName = config.stack.projectName
   const manifestDir = join(deployDir, 'etc', 'stacks')

@@ -71,20 +71,20 @@ run_set() {
   done
 
   if [[ ${#existing[@]} -eq 0 ]]; then
-    echo "$(date): [${set_name}] WARNING — no matching files"
+    echo "$(date): [${set_name}] WARNING: no files match the sources"
     status="empty"
   else
     if (umask 077; tar -czf "$archive" "${existing[@]}") 2>/dev/null; then
       if tar -tzf "$archive" >/dev/null 2>&1; then
         size=$(stat -c %s "$archive" 2>/dev/null || stat -f %z "$archive" 2>/dev/null || echo 0)
-        echo "$(date): [${set_name}] OK — $(basename "$archive") ($(( size / 1024 ))KB)"
+        echo "$(date): [${set_name}] OK: $(basename "$archive") ($(( size / 1024 ))KB)"
       else
-        echo "$(date): [${set_name}] FAILED — archive corrupt" >&2
+        echo "$(date): [${set_name}] FAILED: the archive is damaged (tar cannot read it)" >&2
         status="failed"
         overall_ok=false
       fi
     else
-      echo "$(date): [${set_name}] FAILED — tar error" >&2
+      echo "$(date): [${set_name}] FAILED: tar could not create the archive" >&2
       status="failed"
       overall_ok=false
     fi

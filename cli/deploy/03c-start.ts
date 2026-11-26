@@ -19,7 +19,7 @@ export async function start(ctx: DeployContext): Promise<void> {
   const { remote } = ctx
 
   if (!remote) {
-    ctx.errors.push({ phase: 'start', message: 'No remote executor configured', fatal: true })
+    ctx.errors.push({ phase: 'start', message: 'No SSH connection is set up for this deploy (no remote executor)', fatal: true })
     return
   }
   if (ctx.compose.skip) {

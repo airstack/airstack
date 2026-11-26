@@ -34,22 +34,22 @@ if [ -z "${DEV_USERS//[ ,]/}" ]; then echo "ERROR: DEV_USERS is required" >&2; e
 CURRENT_STEP="packages"
 echo "==> Installing rootless prerequisites..."
 DEBIAN_FRONTEND=noninteractive apt-get install -y uidmap slirp4netns docker-ce-rootless-extras >/dev/null
-command -v dockerd-rootless-setuptool.sh >/dev/null || { echo "ERROR: dockerd-rootless-setuptool.sh missing (docker-ce-rootless-extras)" >&2; exit 1; }
+command -v dockerd-rootless-setuptool.sh >/dev/null || { echo "ERROR: dockerd-rootless-setuptool.sh is missing. It comes with the docker-ce-rootless-extras package." >&2; exit 1; }
 
 for u in ${DEV_USERS//,/ }; do
   CURRENT_STEP="rootless docker for ${u}"
   echo "==> ${u}"
-  id "${u}" >/dev/null 2>&1 || { echo "ERROR: user ${u} does not exist (run: stack-cli vps-setup base)" >&2; exit 1; }
+  id "${u}" >/dev/null 2>&1 || { echo "ERROR: user ${u} does not exist (run: airstack deploy <machine> --install --step base)" >&2; exit 1; }
   if id -nG "${u}" | tr ' ' '\n' | grep -qx docker; then
-    echo "  WARNING: ${u} is in the docker group (root-equivalent). Remove it: gpasswd -d ${u} docker" >&2
+    echo "  WARNING: ${u} is in the docker group (this gives root-level power). Remove it: gpasswd -d ${u} docker" >&2
   fi
   grep -q "^${u}:" /etc/subuid && grep -q "^${u}:" /etc/subgid \
-    || { echo "ERROR: ${u} has no subuid/subgid range (usermod --add-subuids/--add-subgids)" >&2; exit 1; }
+    || { echo "ERROR: ${u} has no subordinate UID/GID range in /etc/subuid and /etc/subgid. Add one with usermod --add-subuids and --add-subgids." >&2; exit 1; }
 
   uid="$(id -u "${u}")"; home="$(getent passwd "${u}" | cut -d: -f6)"
   loginctl enable-linger "${u}"
   for _ in $(seq 1 30); do [ -S "/run/user/${uid}/bus" ] && break; sleep 1; done
-  [ -S "/run/user/${uid}/bus" ] || { echo "ERROR: no user service manager for ${u} (/run/user/${uid}/bus)" >&2; exit 1; }
+  [ -S "/run/user/${uid}/bus" ] || { echo "ERROR: the systemd user manager for ${u} is not running (no /run/user/${uid}/bus)" >&2; exit 1; }
 
   # Run as the user, with the environment its systemd --user instance expects.
   as_user() { sudo -u "${u}" env HOME="${home}" XDG_RUNTIME_DIR="/run/user/${uid}" \
@@ -77,7 +77,7 @@ UNIT
     as_user env DOCKER_HOST="unix:///run/user/${uid}/docker.sock" docker info >/dev/null 2>&1 && break; sleep 1
   done
   as_user env DOCKER_HOST="unix:///run/user/${uid}/docker.sock" docker info --format '{{.SecurityOptions}}' | grep -q rootless \
-    || { echo "ERROR: rootless daemon for ${u} did not come up" >&2; exit 1; }
+    || { echo "ERROR: the rootless Docker daemon for ${u} did not start" >&2; exit 1; }
   as_user docker context use rootless >/dev/null
   echo "  ${u}: rootless Docker up (socket /run/user/${uid}/docker.sock, default context 'rootless')"
 done

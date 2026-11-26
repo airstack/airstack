@@ -105,39 +105,39 @@ export async function runInstall(
   }
 
   if (!moves) {
-    out.info(`${name}: ssh.port is the bootstrap port (${s.port}); SSH stays there, no lockdown step`)
+    out.info(`${name}: host.ssh.port is the same as the bootstrap port (${s.port}). SSH stays on that port, so there is no lockdown step.`)
     return { ok: true, note: 'installed' }
   }
 
   const final: Conn = { user: s.user, port: s.port }
   const boot: Conn = { user: s.user, port: s.bootstrapPort }
   if (!(await testSSHConnection(sshFor(unit.config, final), 8))) {
-    out.fail(`${name}: SSH as ${s.user} on port ${s.port} does not work after harden; not locking down (port ${s.bootstrapPort} stays open)`)
+    out.fail(`${name}: SSH as ${s.user} on port ${s.port} does not work after harden. Lockdown stopped; port ${s.bootstrapPort} stays open.`)
     return { ok: false, note: 'final port unreachable' }
   }
 
   // Already finalized? (bootstrap port refuses while the final port works)
   if (!(await testSSHConnection(sshFor(unit.config, boot), 6))) {
-    out.ok(`${name}: already locked down (port ${s.bootstrapPort} closed, ${s.port} open)`)
+    out.ok(`${name}: already locked down (port ${s.bootstrapPort} is closed, port ${s.port} is open)`)
     return { ok: true, note: 'installed' }
   }
 
   // 2. Reboot over the final port; it must come back on the final port before anything is closed.
   if (!(await run('reboot', final))) {
-    out.fail(`${name}: did not come back on port ${s.port} after a reboot; not locking down (port ${s.bootstrapPort} stays open)`)
+    out.fail(`${name}: machine did not come back on port ${s.port} after reboot. Lockdown stopped; port ${s.bootstrapPort} stays open.`)
     return { ok: false, note: 'no SSH after reboot' }
   }
 
   // 3. Finalize, then prove: final port works, bootstrap port refuses.
   if (!(await run('harden', final, true))) return { ok: false, note: 'finalize failed' }
   if (!(await testSSHConnection(sshFor(unit.config, final), 8))) {
-    out.fail(`${name}: SSH on port ${s.port} stopped working after finalize — use the provider console`)
+    out.fail(`${name}: SSH on port ${s.port} stopped working after finalize. Use your VPS provider's web console to log in and fix it.`)
     return { ok: false, note: 'locked out after finalize' }
   }
   if (await testSSHConnection(sshFor(unit.config, boot), 6)) {
-    out.warn(`${name}: port ${s.bootstrapPort} still accepts SSH after finalize`)
+    out.warn(`${name}: port ${s.bootstrapPort} still accepts SSH after finalize. Check the firewall: sudo ufw status`)
   } else {
-    out.ok(`${name}: locked down: SSH only on port ${s.port} as ${s.user}; port ${s.bootstrapPort} closed`)
+    out.ok(`${name}: locked down. SSH works only on port ${s.port} as ${s.user}. Port ${s.bootstrapPort} is closed.`)
   }
   return { ok: true, note: 'installed' }
 }

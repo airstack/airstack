@@ -4,7 +4,7 @@
 // (config.yaml, auths/, logs/). Deploy never syncs or deletes that directory;
 // copy config.yaml there once by hand (see docs/CLIPROXYAPI.md).
 //
-// Config schema (under plugins.cliproxyapi in stack.yml):
+// Config schema (under plugins.cliproxyapi in machines/<m>.yaml or airstack.yaml):
 //   image: eceasy/cli-proxy-api:v8.0.80  # optional; default is pinned (bump deliberately)
 //   memory: 1G                           # optional container memory limit
 //   usageServer:                         # optional: simple10/usage-server sidecar + proxy plugin mounts
@@ -29,7 +29,7 @@ async function postSyncHook(ctx: DeployContext): Promise<void> {
   if (cfg.stdout.trim() !== 'ok') {
     ctx.errors.push({
       phase: 'post-sync',
-      message: `[cliproxyapi] ${dir}/config.yaml missing — copy it to the VPS first (docs/CLIPROXYAPI.md)`,
+      message: `[cliproxyapi] ${dir}/config.yaml is missing. Copy it to the machine first (see docs/CLIPROXYAPI.md).`,
       fatal: true,
     })
     return
@@ -42,7 +42,7 @@ async function postSyncHook(ctx: DeployContext): Promise<void> {
   // allow-remote: true would expose the management API to every tailnet peer.
   const remote = await ctx.remote.run(`sudo grep -E '^\\s*allow-remote:\\s*true' ${dir}/config.yaml`)
   if (remote.exitCode === 0) {
-    ctx.log.warn('[cliproxyapi] management.allow-remote is true — tailnet peers can reach the management API')
+    ctx.log.warn('[cliproxyapi] management.allow-remote is true, so every machine on the tailnet can reach the management API')
   }
 }
 

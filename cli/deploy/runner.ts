@@ -4,7 +4,7 @@
  * Orchestrates all deploy phases in order. Each phase:
  *   1. Runs core logic (built-in)
  *   2. Runs plugin hooks (in registration order)
- *   3. Runs deploy hook from stack.yml (if declared)
+ *   3. Runs the deploy hook from deploy.hooks in the unit config (if declared)
  *
  * Aborts on fatal errors. Non-fatal errors accumulate in ctx.errors.
  */
@@ -43,7 +43,7 @@ const PHASES: { name: DeployPhase; run: PhaseFn; logFile: string }[] = [
 ]
 
 /**
- * Run a deploy hook declared in stack.yml deploy.hooks.
+ * Run a deploy hook declared in the unit config under deploy.hooks.
  * Silently skips if no hook is configured for this phase.
  */
 async function runDeployHook(ctx: DeployContext, phase: DeployPhase): Promise<void> {
@@ -115,7 +115,7 @@ export async function runDeploy(ctx: DeployContext): Promise<void> {
     await runPluginHooks(ctx, name)
     if (hasFatalError(ctx)) break
 
-    // 3. Deploy hook (from stack.yml)
+    // 3. Deploy hook (from deploy.hooks in the unit config)
     await runDeployHook(ctx, name)
     if (hasFatalError(ctx)) break
 

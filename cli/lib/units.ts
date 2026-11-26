@@ -7,8 +7,9 @@
  * built-in plugins already read (host / stack / plugins / templates / deploy), so the pipeline
  * runs unchanged per unit. Phase 2 moves apply onto the node and can drop this adapter.
  *
- * Box files keep the stack-cli name docker-compose.yml for now; a stack template whose
- * destination is compose.yaml is staged as docker-compose.yml.
+ * Legacy, on purpose: box files keep the old stack-cli name docker-compose.yml for now, because
+ * running machines depend on it. A stack template whose destination is compose.yaml is staged as
+ * docker-compose.yml.
  */
 
 import { join } from 'node:path'

@@ -25,7 +25,7 @@ export async function fleetInstall(fleet: Fleet, args: string[], out: Output): P
     return EXIT.USAGE
   }
   if (fleet.versionPin && fleet.versionPin !== version) {
-    out.warn(`airstack.yaml pins ${fleet.versionPin}: the next deploy or fleet update puts ${fleet.versionPin} back`)
+    out.warn(`airstack.yaml pins version ${fleet.versionPin}. The next deploy or fleet update installs ${fleet.versionPin} again.`)
   }
   return rollout(fleet, version, targets, out)
 }

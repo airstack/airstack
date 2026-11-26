@@ -69,7 +69,7 @@ EOF
 
   # Verify the bootstrap port is no longer listening
   if ss -tlnH | awk '{print $4}' | grep -qE "[:.]${BOOT_PORT}$"; then
-    echo "WARNING: Port ${BOOT_PORT} still appears to be listening" >&2
+    echo "WARNING: something still listens on port ${BOOT_PORT}" >&2
   else
     echo "  Port ${BOOT_PORT} closed"
   fi
@@ -163,10 +163,10 @@ EOF
 # Validate config before applying
 CURRENT_STEP="SSH config validation"
 if ! sshd -t; then
-  echo "ERROR: SSH config validation failed! Reverting..." >&2
+  echo "ERROR: sshd -t rejected the new SSH config. Removing the new config..." >&2
   rm -f /etc/ssh/sshd_config.d/hardening.conf
   rm -rf /etc/systemd/system/ssh.socket.d
-  echo "Config reverted. Fix issues and retry." >&2
+  echo "The old SSH config is back in use. Fix the problem, then run harden again." >&2
   exit 1
 fi
 echo "  SSH config validated"
@@ -179,7 +179,7 @@ systemctl restart ssh.socket
 # Verify hardened port is listening
 CURRENT_STEP="verify SSH ports"
 if ! ss -tlnp | grep -q ":${SSH_HARDENED_PORT} "; then
-  echo "ERROR: Port ${SSH_HARDENED_PORT} not listening after restart" >&2
+  echo "ERROR: SSH does not listen on port ${SSH_HARDENED_PORT} after the restart" >&2
   exit 1
 fi
 echo "  SSH listening on ports 22 and ${SSH_HARDENED_PORT}"
@@ -316,7 +316,7 @@ EOF
 # Some keys are refused on shared-kernel VMs/containers (e.g. kernel.dmesg_restrict under OrbStack
 # or LXC): warn; the check below still fails if the networking keys did not apply.
 if ! sysctl -p /etc/sysctl.d/99-security.conf; then
-  echo "  WARNING: some kernel parameters were refused (shared kernel?); see lines above" >&2
+  echo "  WARNING: the kernel refused some parameters. This is common on container VPSes that share a kernel. See the lines above." >&2
 fi
 
 if [ "$(sysctl -n net.ipv4.tcp_syncookies)" != "1" ]; then
@@ -331,10 +331,10 @@ CURRENT_STEP=""
 echo ""
 echo "System hardening complete."
 echo ""
-echo "IMPORTANT: Test SSH on the hardened port from your LOCAL machine:"
+echo "IMPORTANT: from your own computer, test SSH on the new port:"
 echo "  ssh -i <key> -p ${SSH_HARDENED_PORT} ${SUDO_USER}@<vps-ip>"
 echo ""
-echo "If it works, update .env (SSH_USER=${SUDO_USER}, SSH_PORT=${SSH_HARDENED_PORT})"
-echo "then run: stack-cli vps-setup harden --finalize"
+echo "If it works, set host.ssh.user: ${SUDO_USER} and host.ssh.port: ${SSH_HARDENED_PORT} in the machine file."
+echo "Then run: airstack deploy <machine> --install --step harden --finalize"
 echo ""
 echo "SETUP_HARDEN_OK"

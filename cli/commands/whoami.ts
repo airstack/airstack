@@ -11,7 +11,7 @@ export function whoami(mode: ModeInfo, verbs: VerbSpec[], version: string, out: 
   out.info(`${pad('roles')}${mode.roles.join(', ')}`)
   if (mode.marker) {
     out.info(`${pad('machine')}${mode.marker.machine ?? '(unnamed)'}  (${mode.marker.path})`)
-    if (mode.marker.problem) out.warn(`untrusted marker: ${mode.marker.problem}; mutating verbs are refused`)
+    if (mode.marker.problem) out.warn(`marker file is not trusted: ${mode.marker.problem}. Verbs that change this machine are blocked.`)
   } else {
     out.info(`${pad('machine')}- (no /etc/airstack/machine.yaml: this is a controller)`)
   }

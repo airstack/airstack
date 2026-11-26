@@ -32,7 +32,7 @@ export function doctorNode(mode: ModeInfo, fix: boolean, out: Output): void {
   const info = loadNodeInfo()
 
   // airstack install
-  if (!existsSync(NODE_BIN)) out.fail(`${NODE_BIN} missing: run airstack deploy (or fleet update) from the controller`)
+  if (!existsSync(NODE_BIN)) out.fail(`${NODE_BIN} is missing. On the controller, run: airstack deploy <machine> (or airstack fleet update <machine>)`)
   else {
     const target = readlinkSync(NODE_BIN)
     if (!target.startsWith(`${NODE_LIB}/versions/`)) out.warn(`${NODE_BIN} points outside ${NODE_LIB}/versions: ${target}`)
@@ -43,7 +43,7 @@ export function doctorNode(mode: ModeInfo, fix: boolean, out: Output): void {
     }
   }
   if (info.version && !versionLabel().startsWith(info.version.split(' ')[0])) {
-    out.warn(`marker says airstack ${info.version}; running ${versionLabel()}`)
+    out.warn(`marker says airstack ${info.version}, but this is airstack ${versionLabel()}`)
   }
 
   // config history
@@ -60,7 +60,7 @@ export function doctorNode(mode: ModeInfo, fix: boolean, out: Output): void {
   }
 
   // helper files
-  if (!existsSync(REDACT_PATH)) out.warn(`${REDACT_PATH} missing: node output redacts fewer secrets (deploy writes it)`)
+  if (!existsSync(REDACT_PATH)) out.warn(`${REDACT_PATH} is missing, so node output hides fewer secrets. The next deploy writes it.`)
   else {
     const bad = rootOwned(REDACT_PATH, 0o600)
     if (bad && fix) { chmodSync(REDACT_PATH, 0o600); out.ok(`fixed: chmod 600 ${REDACT_PATH}`) }

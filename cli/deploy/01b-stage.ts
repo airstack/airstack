@@ -1,7 +1,7 @@
 /**
  * Phase 01b: Stage
  *
- * Core: build .deploy/ directory from deploy/ base + templates + plugin templates.
+ * Core: build the staging dir (.airstack/deploy/<machine>/<unit>/) from deploy/ base + templates + plugin templates.
  *
  * Template context is built from the enriched Config (host, stack, plugins, deploy)
  * plus the manifest (generated during stage, not part of Config).
@@ -88,7 +88,7 @@ export async function stage(ctx: DeployContext): Promise<void> {
   }
 
   if (errors.length === 0) {
-    ctx.phaseStatus.push({ phase: 'stage', success: true, message: 'Staged .deploy/' })
+    ctx.phaseStatus.push({ phase: 'stage', success: true, message: 'Staged files for the unit' })
   } else {
     ctx.phaseStatus.push({ phase: 'stage', success: false, message: `Staging failed: ${errors.length} error(s)` })
   }

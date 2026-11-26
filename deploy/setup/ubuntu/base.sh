@@ -126,7 +126,7 @@ for dev in ${DEV_USERS//,/ }; do
   fi
   passwd -l "${dev}" >/dev/null
   if id -nG "${dev}" | tr ' ' '\n' | grep -qx docker; then
-    echo "  WARNING: ${dev} is in the docker group (root-equivalent). Remove: gpasswd -d ${dev} docker" >&2
+    echo "  WARNING: ${dev} is in the docker group (this gives root-level power). Remove it: gpasswd -d ${dev} docker" >&2
   fi
   # Keep the user's service manager (and its rootless Docker) running without a login.
   loginctl enable-linger "${dev}" 2>/dev/null || true

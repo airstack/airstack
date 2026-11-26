@@ -66,7 +66,7 @@ export async function statusCommand(args: string[], fleetPath: string, out: Outp
     }
     const marker = await readMarker(remote)
     if (!marker.exists) {
-      out.warn(`${name}: reachable, not installed (no /etc/airstack/machine.yaml)`)
+      out.warn(`${name}: reachable, but airstack is not installed there (no /etc/airstack/machine.yaml)`)
       out.next(`airstack deploy ${name} --install`)
       continue
     }

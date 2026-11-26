@@ -12,7 +12,7 @@
 # project folders, ~/.claude, ~/.codex, anything not listed below. Add paths only
 # through the knobs.
 #
-# Knobs (environment; cron `env:` in stack.yml). Defaults in brackets.
+# Knobs (environment; cron `env:` in the fleet config). Defaults in brackets.
 #
 #   Docker
 #     CLEANUP_DOCKER=true                 [true]   prune unused images + build cache
@@ -165,7 +165,7 @@ prune_tmp_dir() {  # $1 dir
     find "${common[@]}" -depth -type d -empty -mmin +"$TMP_MIN_AGE_MINUTES" -delete 2>/dev/null || true
     read -r sp ip < <(fs_free_pcts "$dir")
     if (( sp < TMP_TARGET_FREE_PCT || ip < TMP_TARGET_FREE_PCT )); then
-      log "tmp: WARNING: $dir still at space ${sp}% / inodes ${ip}% free after pruning everything older than ${TMP_MIN_AGE_MINUTES} min (active use?)"
+      log "tmp: WARNING: $dir still at space ${sp}% / inodes ${ip}% free after pruning everything older than ${TMP_MIN_AGE_MINUTES} min (files may be in active use)"
     else
       log "tmp: $dir now space free ${sp}%, inodes free ${ip}%"
     fi

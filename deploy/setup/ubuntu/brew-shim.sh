@@ -28,7 +28,7 @@ owner_now="$(stat -c %U "${BREW_PREFIX}/bin/brew")"
 
 cat > /usr/local/bin/brew <<SHIM
 #!/bin/bash
-# Installed by stack-cli (vps-setup brew-shim). Homebrew here is owned by ${BREW_OWNER}.
+# Installed by airstack (deploy --install --step brew-shim). Homebrew here is owned by ${BREW_OWNER}.
 OWNER='${BREW_OWNER}'
 REAL='${BREW_PREFIX}/bin/brew'
 if [ "\$(id -un)" = "\$OWNER" ]; then exec "\$REAL" "\$@"; fi
@@ -50,7 +50,7 @@ chmod 755 /usr/local/bin/brew
 # PATH for interactive/login shells of everyone except root and the stack owner. Appended
 # (not prepended) so /usr/local/bin/brew, the shim, wins over ${BREW_PREFIX}/bin/brew.
 cat > /etc/profile.d/brew-readonly.sh <<PROFILE
-# Installed by stack-cli (vps-setup brew-shim).
+# Installed by airstack (deploy --install --step brew-shim).
 if [ "\$(id -u)" != 0 ] && [ "\$(id -un)" != '${APP_USER}' ] && [ "\$(id -un)" != '${BREW_OWNER}' ]; then
   case ":\$PATH:" in *":${BREW_PREFIX}/bin:"*) ;; *) PATH="\$PATH:${BREW_PREFIX}/bin" ;; esac
   export PATH

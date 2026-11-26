@@ -39,7 +39,7 @@ export async function checkPluginScopes(fleet: Fleet, machine: Machine): Promise
     try {
       const lp = await loadPluginRef(fleet.root, ref, config)
       if (lp.plugin.scope === undefined && lp.source === 'fleet') {
-        issues.push({ level: 'warn', file: mFile, key, message: `${ref} declares no scope (treated as 'any'); add scope: 'machine' | 'stack' | 'any'` })
+        issues.push({ level: 'warn', file: mFile, key, message: `${ref} declares no scope, so airstack treats it as 'any'. Add scope: 'machine' | 'stack' | 'any'` })
       }
       if (lp.scope !== 'any' && lp.scope !== where) {
         issues.push({

@@ -132,13 +132,13 @@ describe('machine loading', () => {
 
   it('run user must be the stack user or a dev user', () => {
     write('machines/ops2/machine.yaml', 'machine: ops2\nhost: { ip: 203.0.113.20 }\nstacks:\n  wiki: { user: mallory }\n')
-    expect(fails(loadMachine(loadFleet(root), 'ops2').issues).join()).toMatch(/'mallory' is neither/)
+    expect(fails(loadMachine(loadFleet(root), 'ops2').issues).join()).toMatch(/'mallory' must be host.users.stack/)
   })
 
   it('a dev-user stack cannot live under the machine root', () => {
     const p = join(root, 'machines/airstack-test1.yaml')
     writeFileSync(p, readFileSync(p, 'utf8').replace('values: { port: 3001 }', 'values: { port: 3001 }\n    installDir: /home/deploy/devstack'))
-    expect(fails(loadMachine(loadFleet(root), 'airstack-test1').issues).join()).toMatch(/dev-user stack cannot live under \/home\/deploy/)
+    expect(fails(loadMachine(loadFleet(root), 'airstack-test1').issues).join()).toMatch(/stack run by a dev user cannot live under \/home\/deploy/)
   })
 
   it('host_ crons are machine-level only', () => {

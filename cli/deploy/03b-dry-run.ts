@@ -18,7 +18,7 @@ export async function dryRun(ctx: DeployContext): Promise<void> {
   const { remote } = ctx
 
   if (!remote) {
-    ctx.errors.push({ phase: 'dry-run', message: 'No remote executor configured', fatal: true })
+    ctx.errors.push({ phase: 'dry-run', message: 'No SSH connection is set up for this deploy (no remote executor)', fatal: true })
     return
   }
   if (ctx.compose.skip) {
@@ -52,7 +52,7 @@ export async function dryRun(ctx: DeployContext): Promise<void> {
   if (result.exitCode !== 0) {
     ctx.errors.push({
       phase: 'dry-run',
-      message: `Docker compose config validation failed:\n${result.stdout || result.stderr}`,
+      message: `docker compose config found errors (compose file not valid):\n${result.stdout || result.stderr}`,
       fatal: true,
     })
     return

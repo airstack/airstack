@@ -74,7 +74,7 @@ export async function runVpsSetup(step: SetupStep, opts: SetupOptions): Promise<
     distro: f.distro,
   }
   ssh = { host: config.host.ip, port: config.host.sshPort, user: config.host.sshUser, keyPath: config.host.sshKey }
-  if (!ssh.host) fail('No VPS configured (host.ip not set)')
+  if (!ssh.host) fail('No machine address: set host.ip in the machine file.')
   remote = createRemoteExecutor(ssh)
 
   switch (step) {
@@ -143,15 +143,15 @@ async function cmdBase() {
   })
 
   if (result.exitCode !== 0) {
-    fail('\n\x1b[31mBase setup failed\x1b[0m')
+    fail('base script failed (see its output above)')
   }
 
   console.log(`\n\x1b[32mBase setup complete.\x1b[0m`)
-  console.log(`\nNext steps:`)
+  console.log(`\nNext steps (--install runs them for you):`)
   console.log(
     `  1. Test SSH as ${sudoUser}: ssh -i ${ssh.keyPath} -p ${ssh.port} ${sudoUser}@${ssh.host}`
   )
-  console.log(`  2. Set host.ssh.user: ${sudoUser} in the machine file`)
+  console.log(`  2. Check that the machine file has host.ssh.user: ${sudoUser}`)
   console.log(`  3. Run: airstack deploy <machine> --install --step harden`)
 }
 
@@ -181,18 +181,18 @@ async function cmdHarden() {
   })
 
   if (result.exitCode !== 0) {
-    fail('\n\x1b[31mHardening failed\x1b[0m')
+    fail('harden script failed (see its output above)')
   }
 
   if (flags.finalize) {
-    console.log(`\n\x1b[32mSSH hardening finalized. Port 22 closed.\x1b[0m`)
+    console.log(`\n\x1b[32mSSH hardening finalized. Port ${config.host.sshBootstrapPort ?? 22} is closed.\x1b[0m`)
   } else {
     console.log(`\n\x1b[32mHardening complete.\x1b[0m`)
-    console.log(`\nNext steps:`)
+    console.log(`\nNext steps (--install runs them for you):`)
     console.log(
-      `  1. Test hardened port: ssh -i ${ssh.keyPath} -p ${hardenedPort} ${sudoUser}@${ssh.host}`
+      `  1. Test the new SSH port: ssh -i ${ssh.keyPath} -p ${hardenedPort} ${sudoUser}@${ssh.host}`
     )
-    console.log(`  2. Set host.ssh.user: ${sudoUser} and host.ssh.port: ${hardenedPort} in the machine file`)
+    console.log(`  2. Check that the machine file has host.ssh.user: ${sudoUser} and host.ssh.port: ${hardenedPort}`)
     console.log(`  3. Run: airstack deploy <machine> --install --step harden --finalize`)
   }
 }
@@ -207,7 +207,7 @@ async function cmdReboot() {
   // looks like it came back instantly.
   const bootId = async () => (await remote.run('cat /proc/sys/kernel/random/boot_id 2>/dev/null')).stdout.trim()
   const before = await bootId()
-  if (!before) fail('could not read the boot id before rebooting')
+  if (!before) fail('could not read the boot ID (/proc/sys/kernel/random/boot_id), so reboot was not started')
 
   await remote.run('sudo systemd-run --on-active=2 --timer-property=AccuracySec=100ms /bin/systemctl reboot >/dev/null 2>&1 || (sleep 1; sudo reboot) >/dev/null 2>&1 &')
   console.log('\x1b[33mReboot scheduled. Waiting for the machine to come back...\x1b[0m')
@@ -221,11 +221,11 @@ async function cmdReboot() {
     }
     const now = await bootId()
     if (now && now !== before) {
-      console.log(`\n\x1b[32mBack online after ~${elapsed + 5}s (new boot)\x1b[0m`)
+      console.log(`\n\x1b[32mMachine is back online after about ${elapsed + 5}s (new boot).\x1b[0m`)
       return
     }
   }
-  fail(`no new boot answered SSH on port ${ssh.port} within ${maxWait}s`)
+  fail(`machine did not come back on SSH port ${ssh.port} within ${maxWait}s after reboot`)
 }
 
 // ── docker ──────────────────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ async function cmdDocker() {
   })
 
   if (result.exitCode !== 0) {
-    fail('\n\x1b[31mDocker setup failed\x1b[0m')
+    fail('docker script failed (see its output above)')
   }
 
   console.log(`\n\x1b[32mDocker setup complete.\x1b[0m`)
@@ -282,9 +282,9 @@ async function cmdRootless() {
     envVars: { DEV_USERS: devUsers.join(' ') },
   })
   if (result.exitCode !== 0) {
-    fail('\n\x1b[31mRootless setup failed\x1b[0m')
+    fail('rootless script failed (see its output above)')
   }
-  console.log(`\n\x1b[32mRootless Docker ready.\x1b[0m Dev users run plain \`docker\`; it talks to their own daemon.`)
+  console.log(`\n\x1b[32mRootless Docker is ready.\x1b[0m Each dev user runs plain \`docker\`. It talks to that user's own Docker daemon.`)
 }
 
 // ── brew-shim ───────────────────────────────────────────────────────────────
@@ -300,7 +300,8 @@ async function cmdBrewShim() {
 
   console.log(`\n\x1b[1mHomebrew shim\x1b[0m`)
   console.log(`  Target: ${ssh.user}@${ssh.host}:${ssh.port}`)
-  console.log(`  Homebrew owner: ${owner}; stack owner (no brew PATH): ${config.host.appUser}\n`)
+  console.log(`  Homebrew owner: ${owner}`)
+  console.log(`  Stack owner (brew not on its PATH): ${config.host.appUser}\n`)
 
   const result = await executeSetupScript({
     ssh,
@@ -308,9 +309,9 @@ async function cmdBrewShim() {
     envVars: { BREW_OWNER: owner, APP_USER: config.host.appUser },
   })
   if (result.exitCode !== 0) {
-    fail('\n\x1b[31mBrew shim setup failed\x1b[0m')
+    fail('brew-shim script failed (see its output above)')
   }
-  console.log(`\n\x1b[32mDone.\x1b[0m Other accounts can run brew-installed tools but not 'brew install'.`)
+  console.log(`\n\x1b[32mDone.\x1b[0m Other accounts can run tools that brew installed. Only ${owner} can run 'brew install'.`)
 }
 
 // ── tailscale ───────────────────────────────────────────────────────────────
@@ -341,11 +342,11 @@ async function cmdTailscale() {
   })
 
   if (result.exitCode !== 0) {
-    fail('\n\x1b[31mTailscale setup failed\x1b[0m')
+    fail('tailscale script failed (see its output above)')
   }
 
   console.log(`\n\x1b[32mTailscale setup complete.\x1b[0m`)
-  console.log(`\nNext step: list tailnet ports under plugins.tailscale.ports, then airstack deploy <machine>`)
+  console.log(`\nNext step: list the ports the tailnet may reach under plugins.tailscale.ports. Then run: airstack deploy <machine>`)
 }
 
 // ── verify ──────────────────────────────────────────────────────────────────
@@ -375,10 +376,10 @@ async function cmdVerify() {
   })
 
   if (result.exitCode !== 0) {
-    fail('\n\x1b[31mVerification found failures.\x1b[0m')
+    fail('verify found problems (see the FAIL lines above)')
   }
 
-  console.log(`\n\x1b[32mVPS is ready for deployment.\x1b[0m`)
+  console.log(`\n\x1b[32mThe machine is ready to deploy.\x1b[0m`)
   console.log(`\nNext step: airstack deploy <machine>`)
 }
 
@@ -401,18 +402,17 @@ async function cmdLockdown() {
     await remote.run(`sudo ufw allow ${port}/tcp`)
     await remote.run(`sudo ufw delete allow from ${dockerSubnet} to any port ${port} proto tcp 2>/dev/null || true`)
     console.log(`\n\x1b[32mExternal SSH port ${port} reopened.\x1b[0m`)
-    console.log(`Set host.sshExpose: public (or SSH_EXPOSE=public) to route the CLI directly again.`)
+    console.log(`To connect directly again, set host.ssh.expose: public in the machine file.`)
     return
   }
 
   if (config.host.sshExpose !== 'tunnel') {
-    console.error(`\n\x1b[31mhost.sshExpose is not 'tunnel'.\x1b[0m`)
-    console.error(`Set host.sshExpose: tunnel (or SSH_EXPOSE=tunnel) before locking down,`)
-    fail(`so the CLI knows to route subsequent connections through cloudflared.`)
+    console.error(`\n\x1b[31mhost.ssh.expose is not 'tunnel'.\x1b[0m`)
+    fail(`Set host.ssh.expose: tunnel in the machine file before lockdown. Then airstack connects through cloudflared.`)
   }
   if (!config.host.sshTunnelHostname) {
-    console.error(`\n\x1b[31mhost.sshTunnelHostname is not set.\x1b[0m`)
-    fail(`Set it to your Cloudflare Access SSH hostname (e.g. ssh.example.com).`)
+    console.error(`\n\x1b[31mhost.ssh.tunnelHostname is not set.\x1b[0m`)
+    fail(`Set host.ssh.tunnelHostname to your Cloudflare Access SSH hostname (e.g. ssh.example.com).`)
   }
 
   // Preflight — confirm the tunnel SSH route works BEFORE closing the direct port.
@@ -424,19 +424,19 @@ async function cmdLockdown() {
     viaTunnel: true,
     tunnelHostname: config.host.sshTunnelHostname,
   }
-  console.log(`\nPreflight: testing SSH via tunnel (${config.host.sshTunnelHostname})...`)
+  console.log(`\nCheck first: testing SSH through the tunnel (${config.host.sshTunnelHostname})...`)
   const reachable = await testSSHConnection(tunnelSSH, 20)
   if (!reachable) {
-    console.error(`\n\x1b[31mTunnel SSH is NOT reachable yet.\x1b[0m`)
-    console.error(`Set up the tunnel route first, then retry (or pass --force to override):`)
+    console.error(`\n\x1b[31mSSH through the tunnel does NOT work yet.\x1b[0m`)
+    console.error(`Set up the tunnel route first, then try again (--force skips this check):`)
     console.error(`  1. Deploy so cloudflared is running: airstack deploy <machine>`)
     console.error(`  2. Add a tunnel ingress rule: ssh://10.200.0.1:${port} for hostname ${config.host.sshTunnelHostname}`)
     console.error(`  3. Add a Cloudflare Access (self-hosted) app for that hostname`)
     console.error(`  4. Authenticate locally once: cloudflared access ssh-config --hostname ${config.host.sshTunnelHostname}`)
-    if (!flags.force) fail('tunnel SSH preflight failed (use --force to override)')
-    console.error(`\n\x1b[33m--force given: proceeding despite failed preflight.\x1b[0m`)
+    if (!flags.force) fail('SSH through the tunnel does not work. Lockdown stopped; external SSH stays open (--force skips this check).')
+    console.error(`\n\x1b[33m--force given: lockdown continues although the tunnel check failed.\x1b[0m`)
   } else {
-    console.log(`  \x1b[32mTunnel SSH reachable.\x1b[0m`)
+    console.log(`  \x1b[32mSSH through the tunnel works.\x1b[0m`)
   }
 
   console.log(`\nAllowing the Docker subnet (${dockerSubnet}) to reach SSH port ${port}...`)
@@ -446,10 +446,9 @@ async function cmdLockdown() {
   await remote.run(`sudo ufw delete allow ${port}/tcp 2>/dev/null || true`)
   await remote.run(`sudo ufw delete allow 22/tcp 2>/dev/null || true`)
 
-  console.log(`\n\x1b[32mLockdown complete — external SSH is closed.\x1b[0m`)
-  console.log(`The CLI will now route SSH through the tunnel (host.sshExpose: tunnel).`)
-  console.log(`\n\x1b[33mRecovery:\x1b[0m if you lose tunnel access, reopen the port from your`)
-  console.log(`provider's console/VNC:  sudo ufw allow ${port}/tcp`)
+  console.log(`\n\x1b[32mLockdown complete. External SSH is closed.\x1b[0m`)
+  console.log(`airstack now connects through the tunnel (host.ssh.expose: tunnel).`)
+  console.log(`\n\x1b[33mRecovery:\x1b[0m if the tunnel stops working, open your VPS provider's web console and run: sudo ufw allow ${port}/tcp`)
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -458,7 +457,7 @@ async function cmdLockdown() {
 function resolveAuthorizedKey(): string {
   const keyPath = expandKey(config.host.sshKey)
   if (!keyPath) {
-    fail('No SSH key configured (host.ssh.key in the machine file). Needed to seed the admin user.')
+    fail('No SSH key: set host.ssh.key in the machine file. The admin user needs it to log in.')
   }
   const pubPath = `${keyPath}.pub`
   if (existsSync(pubPath)) {
@@ -469,7 +468,7 @@ function resolveAuthorizedKey(): string {
     const out = Bun.spawnSync(['ssh-keygen', '-y', '-f', keyPath])
     if (out.exitCode === 0) return new TextDecoder().decode(out.stdout).trim()
   } catch { /* fall through to error */ }
-  return fail(`Could not find or derive a public key for ${keyPath}. Generate one: ssh-keygen -y -f ${keyPath} > ${pubPath}`)
+  return fail(`No public key for ${keyPath}. Create it: ssh-keygen -y -f ${keyPath} > ${pubPath}`)
 }
 
 /** Return the given password, or generate a strong one and persist it to the machine secrets file. */

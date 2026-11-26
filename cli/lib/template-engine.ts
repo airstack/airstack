@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { resolveFile } from './resolve-file'
 
 /**
- * Process the `templates:` section from stack.yml.
+ * Process the `templates:` section of the unit config (stack.yaml or machine file).
  * For each entry:
  *   - Resolve the source file via resolveFile (projectRoot first, then sharedPaths)
  *   - If source ends with .hbs: render with Handlebars and write to destination in deployDir

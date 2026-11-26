@@ -46,7 +46,7 @@ export async function pullCommand(args: string[], fleetPath: string, out: Output
   }
   const m = loadMachine(fleet, name)
   if (m.issues.some((i) => i.level === 'fail')) {
-    out.fail(`${name}: config errors`)
+    out.fail(`${name}: the machine config has errors`)
     out.next(`airstack fleet check ${name}`)
     return EXIT.FAIL
   }
@@ -120,9 +120,9 @@ function compareUnit(m: Machine, unit: DeployUnit, pullDir: string, prevDir: str
     const now = join(box, f)
     if (!existsSync(now)) continue
     const before = join(prev, f)
-    if (!existsSync(before)) { out.info(`${label}: box-owned ${f} (first pull)`); continue }
+    if (!existsSync(before)) { out.info(`${label}: ${f} is owned by the machine (deploy does not write it); first pull`); continue }
     if (sameFile(before, now)) continue
-    out.warn(`${label}: box-owned ${f} changed since the last pull`)
+    out.warn(`${label}: ${f} (owned by the machine) changed since the last pull`)
     printDiff(before, now, `last-pull/${f}`, `machine/${f}`, opts, out)
   }
 }

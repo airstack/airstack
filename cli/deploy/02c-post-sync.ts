@@ -18,7 +18,7 @@ export async function postSync(ctx: DeployContext): Promise<void> {
   const { installDir } = config.stack
 
   if (!remote) {
-    ctx.errors.push({ phase: 'post-sync', message: 'No remote executor configured', fatal: true })
+    ctx.errors.push({ phase: 'post-sync', message: 'No SSH connection is set up for this deploy (no remote executor)', fatal: true })
     return
   }
 
@@ -26,7 +26,7 @@ export async function postSync(ctx: DeployContext): Promise<void> {
   await remote.run(`sudo chmod 750 ${installDir}`)
 
   // 1. Promote /etc/ subdirs from installDir to /etc/ on VPS (core — not plugin-specific)
-  // The stage phase writes etc/cron.d/, etc/logrotate.d/ into .deploy/
+  // The stage phase writes etc/cron.d/, etc/logrotate.d/ into the staging dir
   // which gets synced to installDir/etc/. Now we promote them to the real /etc/.
   for (const subdir of ['cron.d', 'logrotate.d']) {
     const srcDir = `${installDir}/etc/${subdir}`
@@ -43,6 +43,7 @@ export async function postSync(ctx: DeployContext): Promise<void> {
   }
 
   // 1b. Promote stack manifest to its destination (default /etc/airstack/stacks/, configurable via stack.manifestDir)
+  // Staged as <installDir>/etc/stacks/ (a staging subdir name, not the legacy /etc/stacks host dir).
   const manifestSrc = `${installDir}/etc/stacks`
   const manifestDest = ctx.manifest.destination
   if (manifestDest) {
@@ -63,7 +64,7 @@ export async function postSync(ctx: DeployContext): Promise<void> {
   if (hostTz) {
     const currentTz = await remote.run('timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || true')
     if (currentTz.stdout.trim() !== hostTz) {
-      ctx.log.info(`Setting VPS timezone: ${currentTz.stdout.trim() || '(unknown)'} → ${hostTz}`)
+      ctx.log.info(`Setting machine timezone: ${currentTz.stdout.trim() || '(unknown)'} → ${hostTz}`)
       await remote.run(`sudo timedatectl set-timezone '${hostTz.replace(/'/g, '')}'`)
     }
   }
@@ -74,7 +75,7 @@ export async function postSync(ctx: DeployContext): Promise<void> {
       `sudo test -f ${installDir}/docker-compose.yml && echo ok`,
     )
     if (!verify.stdout.includes('ok')) {
-      ctx.errors.push({ phase: 'post-sync', message: 'docker-compose.yml missing on VPS after sync', fatal: true })
+      ctx.errors.push({ phase: 'post-sync', message: 'docker-compose.yml is missing on the machine after sync', fatal: true })
       return
     }
 
@@ -101,7 +102,7 @@ export async function postSync(ctx: DeployContext): Promise<void> {
     if (badRemote.length > 0) {
       ctx.errors.push({
         phase: 'post-sync',
-        message: `Scripts missing execute permission on VPS:\n  ${badRemote.join('\n  ')}`,
+        message: `Scripts on the machine have no execute permission: ${badRemote.join(' ')}`,
         fatal: false,
       })
     }

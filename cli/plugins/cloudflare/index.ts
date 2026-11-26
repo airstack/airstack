@@ -28,7 +28,7 @@ async function cfTunnelCommand(args: string[], ctx: PluginCommandContext): Promi
     case 'create-tunnel': await cmdCreateTunnel(ctx, args[1] || ''); break
     case '--help': case '-h': case '': cmdHelp(); break
     default:
-      console.error(`Unknown cf-tunnel command: ${command}. Run: airstack fleet plugin cloudflare cf-tunnel --help`)
+      console.error(`Unknown cf-tunnel command: ${command}. Run: airstack fleet plugin <machine> cf-tunnel --help`)
       process.exit(1)
   }
 }

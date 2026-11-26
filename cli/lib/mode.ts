@@ -133,7 +133,7 @@ export function checkVerb(mode: ModeInfo, verb: VerbSpec): VerbCheck {
 
   const m = mode.marker
   if (m?.problem && verb.mutating) {
-    return { ok: false, reason: `blocked: ${verb.name} refused, untrusted ${m.path}: ${m.problem}`, short: `untrusted marker` }
+    return { ok: false, reason: `blocked: ${verb.name} refused because ${m.path} is not trusted: ${m.problem}`, short: `untrusted marker` }
   }
   if (verb.requires === 'controller' && !mode.roles.includes('controller')) {
     return {
@@ -145,7 +145,7 @@ export function checkVerb(mode: ModeInfo, verb: VerbSpec): VerbCheck {
   if (verb.requires === 'node' && mode.mode !== 'node') {
     return {
       ok: false,
-      reason: `blocked: ${verb.name} runs on a node (no ${MARKER_DIR}/machine.yaml here); use: airstack ssh <machine> -- airstack ${verb.name}`,
+      reason: `blocked: ${verb.name} runs only on a node (no ${MARKER_DIR}/machine.yaml here). Use: airstack ssh <machine> -- airstack ${verb.name}`,
       short: `node only (no ${MARKER_DIR}/machine.yaml)`,
     }
   }
@@ -176,7 +176,7 @@ function readMarker(path: string, expectedUid: number): MarkerInfo {
     for (const p of [path, join(path, '..')]) {
       const st = statSync(p)
       if (st.uid !== expectedUid) return { ...base, problem: `${p} owned by uid ${st.uid}, expected ${expectedUid}` }
-      if (st.mode & 0o022) return { ...base, problem: `${p} is group/world writable (mode ${(st.mode & 0o777).toString(8)})` }
+      if (st.mode & 0o022) return { ...base, problem: `${p} can be written by group or others (mode ${(st.mode & 0o777).toString(8)})` }
     }
     const raw = (yaml.load(readFileSync(path, 'utf8')) ?? {}) as Record<string, unknown>
     const roles = (Array.isArray(raw.roles) ? raw.roles : ['node']).map(String)
@@ -192,6 +192,6 @@ function readMarker(path: string, expectedUid: number): MarkerInfo {
       controllerFleet: typeof controller.fleet === 'string' ? controller.fleet : undefined,
     }
   } catch (e) {
-    return { ...base, problem: `unreadable: ${e instanceof Error ? e.message : String(e)}` }
+    return { ...base, problem: `cannot read it: ${e instanceof Error ? e.message : String(e)}` }
   }
 }

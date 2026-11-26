@@ -198,7 +198,7 @@ async function getIngressRules(
  */
 export async function cmdVerifyApiToken(ctx: PluginCommandContext) {
   const cf = getCloudflareConfig(ctx)
-  if (!cf.apiToken) die('plugins.cloudflare.apiToken not set')
+  if (!cf.apiToken) die('plugins.cloudflare.apiToken is not set')
   header('Verifying CF API Token Permissions')
 
   // Try user-level token verification first, then account-level
@@ -214,21 +214,21 @@ export async function cmdVerifyApiToken(ctx: PluginCommandContext) {
       if (acctResp?.result?.status === 'active') {
         pass('Token is valid and active (account-level token)')
       } else {
-        die('Token verification failed — could not verify via user or account endpoint')
+        die('Cloudflare did not accept the API token (the user and the account token checks both failed)')
       }
     } else {
-      die('Token verification failed and could not determine account ID')
+      die('Token check failed, and the account ID is unknown')
     }
   }
 
   const accountId = await getAccountId(cf.apiToken, cf.tunnelToken)
-  if (!accountId) die('No accounts accessible with this token')
+  if (!accountId) die('This token cannot see any Cloudflare account')
   pass(`Account ID: ${accountId}`)
 
   if (await cfApi(cf.apiToken, 'GET', `/accounts/${accountId}/cfd_tunnel?per_page=1`)) {
     pass('Tunnel permission: OK')
   } else {
-    fail('Cannot list tunnels. Token may lack Tunnel Edit permission.')
+    fail('Cannot list tunnels. The token may not have the Tunnel Edit permission.')
   }
 
   // DNS: check the zones of the hostnames the tunnel serves (if readable)
@@ -239,7 +239,7 @@ export async function cmdVerifyApiToken(ctx: PluginCommandContext) {
     if (await cfApi(cf.apiToken, 'GET', `/zones?name=${root}&per_page=1`)) {
       pass(`DNS permission (${root}): OK`)
     } else {
-      fail(`Cannot access zone '${root}'. Token may lack DNS Edit permission.`)
+      fail(`Cannot access zone '${root}'. The token may not have the DNS Edit permission.`)
     }
   }
 
@@ -267,11 +267,11 @@ export async function cmdVerify(ctx: PluginCommandContext) {
   const cf = getCloudflareConfig(ctx)
 
   header('Validating Tunnel Token')
-  if (!cf.tunnelToken) die('stack.cloudflared.tunnelToken not set in config')
+  if (!cf.tunnelToken) die('stack.cloudflared.tunnelToken is not set')
 
   const tunnelId = extractTunnelIdFromToken(cf.tunnelToken)
   if (!tunnelId)
-    die('Could not extract tunnel ID from Cloudflare Tunnel Token — invalid token format')
+    die('The tunnel token is not valid: it holds no tunnel ID')
   pass(`Tunnel ID: ${tunnelId}`)
 
   let tokenAccountId = ''
@@ -282,7 +282,7 @@ export async function cmdVerify(ctx: PluginCommandContext) {
   if (tokenAccountId) pass(`Account ID: ${tokenAccountId}`)
 
   if (!cf.apiToken) {
-    info('(plugins.cloudflare.apiToken not set — skipping ingress route, DNS and Access checks)')
+    info('(plugins.cloudflare.apiToken is not set, so the route, DNS and Access checks are skipped)')
     info('\nVerification complete')
     return
   }
@@ -291,7 +291,7 @@ export async function cmdVerify(ctx: PluginCommandContext) {
   const accountId = tokenAccountId || (await getAccountId(cf.apiToken, cf.tunnelToken))
   const rules = accountId ? await getIngressRules(cf.apiToken, accountId, tunnelId) : null
   if (!rules) {
-    fail('Could not read tunnel configuration — check API token permissions')
+    fail('Cannot read the tunnel config. Check the API token permissions.')
     return
   }
   info(`${rules.length} ingress rule(s) configured:`)
@@ -331,7 +331,7 @@ export async function cmdVerify(ctx: PluginCommandContext) {
     if (state === 'protected') {
       pass(`${domain}: protected by Cloudflare Access`)
     } else if (state === 'unprotected') {
-      fail(`${domain}: NOT protected by Cloudflare Access — anyone with the URL can reach it`)
+      fail(`${domain}: NOT protected by Cloudflare Access. Anyone with the URL can reach it.`)
     } else {
       info(`${domain}: could not check (HTTP ${answer.code || 'no answer'})`)
     }
@@ -345,9 +345,9 @@ export async function cmdVerify(ctx: PluginCommandContext) {
  */
 export async function cmdListTunnels(ctx: PluginCommandContext) {
   const cf = getCloudflareConfig(ctx)
-  if (!cf.apiToken) die('plugins.cloudflare.apiToken not set')
+  if (!cf.apiToken) die('plugins.cloudflare.apiToken is not set')
   const accountId = await getAccountId(cf.apiToken, cf.tunnelToken)
-  if (!accountId) die('No accounts accessible')
+  if (!accountId) die('This token cannot see any Cloudflare account')
 
   header('Active Cloudflare Tunnels')
   const resp = await cfApi(
@@ -371,12 +371,12 @@ export async function cmdListTunnels(ctx: PluginCommandContext) {
  * Create a new Cloudflare tunnel.
  */
 export async function cmdCreateTunnel(ctx: PluginCommandContext, name: string) {
-  if (!name) die('Usage: airstack cf-tunnel create-tunnel <name>')
+  if (!name) die('Usage: airstack fleet plugin <machine> cf-tunnel create-tunnel <name>')
   const cf = getCloudflareConfig(ctx)
-  if (!cf.apiToken) die('plugins.cloudflare.apiToken not set')
+  if (!cf.apiToken) die('plugins.cloudflare.apiToken is not set')
 
   const accountId = await getAccountId(cf.apiToken, cf.tunnelToken)
-  if (!accountId) die('No accounts accessible')
+  if (!accountId) die('This token cannot see any Cloudflare account')
 
   header(`Creating Tunnel: ${name}`)
   const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64')
@@ -408,12 +408,12 @@ export async function cmdCreateTunnel(ctx: PluginCommandContext, name: string) {
  * Print usage help.
  */
 export function cmdHelp() {
-  console.log(`Usage: airstack cf-tunnel <command>
+  console.log(`Usage: airstack fleet plugin <machine> cf-tunnel <command>
 
 Commands:
   verify                      Validate the tunnel token; with an API token, list ingress routes
                               and check DNS + Cloudflare Access for every hostname
-  verify-api-token            Check API token has required permissions
+  verify-api-token            Check that the API token has the permissions it needs
   list-tunnels                List active tunnels
   create-tunnel <name>        Create a new tunnel and save its token`)
 }
