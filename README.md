@@ -218,4 +218,4 @@ bun devutils/release/build.ts     # release tarballs + SHA256SUMS in dist/
 airstack 0.1.0 is the first public release. It runs real machines today. The config format can
 still change before 1.0.
 
-airstack is part of **Airship OS**. It uses the [Business Source License 1.1](LICENSE.md).
+airstack is part of **Airship OS**. It is open source under the [MIT License](LICENSE.md).
