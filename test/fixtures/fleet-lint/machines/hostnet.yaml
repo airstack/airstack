@@ -1,0 +1,6 @@
+machine: hostnet
+host:
+  ip: 203.0.113.33
+  users: { sudo: adminroot, stack: stackroot }
+stacks:
+  hostnet: {}

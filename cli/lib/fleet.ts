@@ -19,9 +19,9 @@ import { resolveDefaults } from './defaults.js'
 import { mergeLayers, isPlainObject, type Plain } from './merge.js'
 import { parseYamlWithRefs, resolveRefs } from './vars.js'
 
-export const CORE_ROOT = resolve(import.meta.dirname, '..', '..')
-export const BUILTIN_PLUGINS_DIR = join(CORE_ROOT, 'cli', 'plugins')
-export const BUILTIN_STACKS_DIR = join(CORE_ROOT, 'stacks')
+import { BUILTIN_PLUGINS_DIR, BUILTIN_STACKS_DIR } from './core.js'
+
+export { CORE_ROOT, BUILTIN_PLUGINS_DIR, BUILTIN_STACKS_DIR } from './core.js'
 export const BUILTIN_PREFIX = 'airstack/'
 /** Machine root when the machine file sets none (plans/phase-1.md: /srv is for data a host serves). */
 export const DEFAULT_MACHINE_ROOT = '/srv/airstack'

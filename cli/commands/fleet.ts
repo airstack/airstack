@@ -6,6 +6,7 @@
 import { relative } from 'node:path'
 import { loadFleet, loadMachine, selectTargets, type Fleet, type HostConfig, type Issue, type Machine } from '../lib/fleet.js'
 import { checkPluginScopes } from '../lib/fleet-check.js'
+import { lintMachine } from '../lib/fleet-lint.js'
 import { isPlainObject, joinPath } from '../lib/merge.js'
 import { EXIT, type Output } from '../lib/output.js'
 
@@ -14,7 +15,7 @@ export const FLEET_USAGE = `Usage: airstack fleet <command>
   list                          machines and their stack instances
   show <machine>                resolved machine summary
   config <machine> [<instance>] merged config, each key tagged with where it came from
-  check [<machine>...]          validate the fleet offline (refs, scopes, secrets, names, users)
+  check [<machine>...]          validate the fleet offline (refs, scopes, secrets, names, users, ports, networks)
   plugin <machine> <cmd> [args] run a plugin command for that machine (e.g. cf-tunnel verify)
 
 Patterns ('airstack-*') and --all work where a machine list is accepted. Quote patterns.
@@ -70,7 +71,7 @@ function oneMachine(fleet: Fleet, args: string[], out: Output, usage: string): M
   return loadMachine(fleet, name)
 }
 
-function show(fleet: Fleet, args: string[], out: Output): number {
+async function show(fleet: Fleet, args: string[], out: Output): Promise<number> {
   const m = oneMachine(fleet, args, out, 'airstack fleet show <machine>')
   if (!m) return EXIT.USAGE
   const h = m.displayHost.host as HostConfig // display copy: secrets stay ${NAME}
@@ -83,7 +84,7 @@ function show(fleet: Fleet, args: string[], out: Output): number {
   for (const i of m.instances) {
     out.info(`stack    ${i.name}  <- ${i.ref}  user ${i.user} (${i.userKind})  dir ${i.installDir}  project ${i.composeProject}`)
   }
-  printIssues(fleet, m.issues, out)
+  printIssues(fleet, [...m.issues, ...(await lintMachine(fleet, m))], out)
   return out.code()
 }
 
@@ -118,7 +119,7 @@ async function check(fleet: Fleet, args: string[], out: Output): Promise<number>
   for (const u of unmatched) out.fail(`no machine matches '${u}'`)
   for (const name of selected) {
     const m = loadMachine(fleet, name)
-    const issues = [...m.issues, ...(await checkPluginScopes(fleet, m))]
+    const issues = [...m.issues, ...(await checkPluginScopes(fleet, m)), ...(await lintMachine(fleet, m))]
     printIssues(fleet, issues, out)
     const f = issues.filter((i) => i.level === 'fail').length
     const w = issues.filter((i) => i.level === 'warn').length

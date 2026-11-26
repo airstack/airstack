@@ -1,0 +1,5 @@
+# One web service. values.port is the host port; values.bind is an optional host address.
+values:
+  port: 8080
+templates:
+  compose.yaml: { src: compose.yaml.hbs }

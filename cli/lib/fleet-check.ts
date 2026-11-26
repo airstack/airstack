@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { dirname, relative } from 'node:path'
 import type { Plugin, PluginScope } from '../types.js'
 import { registerPluginApi } from '../plugin-api.js'
+import { BUILTIN_PLUGINS } from '../plugins/builtin.js'
 import { resolvePluginRef, type Fleet, type Issue, type Machine } from './fleet.js'
 
 export interface LoadedPlugin {
@@ -21,7 +22,7 @@ export async function loadPluginRef(root: string, ref: string, config: unknown):
   const r = resolvePluginRef(root, ref)
   if (!r.ok) throw new Error(r.message)
   registerPluginApi()
-  const mod = await import(pathToFileURL(r.path).href)
+  const mod = r.source === 'builtin' && BUILTIN_PLUGINS[r.name] ? BUILTIN_PLUGINS[r.name] : await import(pathToFileURL(r.path).href)
   if (typeof mod.register !== 'function') throw new Error(`${ref}: ${relative(root, r.path)} does not export register()`)
   const plugin = mod.register(config) as Plugin
   plugin.name = r.name

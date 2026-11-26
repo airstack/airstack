@@ -22,8 +22,10 @@ import { mkdirSync, writeFileSync, chmodSync, readFileSync, cpSync, readdirSync,
 import { join, basename, dirname } from 'node:path'
 import Handlebars from 'handlebars'
 import { resolveFileOptional } from '../../lib/resolve-file.js'
+import { BUILTIN_PLUGINS_DIR } from '../../lib/core.js'
 
-const CORE_CRONS_DIR = join(import.meta.dirname, 'crons')
+// From the core root, not import.meta: a compiled binary ships these files next to it.
+const CORE_CRONS_DIR = join(BUILTIN_PLUGINS_DIR, 'cron', 'crons')
 
 // ── Config parsing ──────────────────────────────────────────────────────────
 

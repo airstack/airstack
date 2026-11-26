@@ -1,0 +1,26 @@
+machine: ports
+host:
+  ip: 203.0.113.31
+  users: { sudo: adminroot, stack: stackroot }
+plugins:
+  airstack/tailscale:
+    ports: [9999, 8090]
+    serve: [4000]
+stacks:
+  cliproxy:
+    stack: airstack/cliproxy
+  web-a:
+    stack: web
+    values: { port: 8081 }
+  web-b:
+    stack: web
+    values: { port: 8081, bind: 127.0.0.1 }
+  web-c:
+    stack: web
+    values: { port: 8317, bind: 127.0.0.1 }
+  web-d:
+    stack: web
+    values: { port: 8090, bind: 127.0.0.1 }
+  web-e:
+    stack: web
+    values: { port: 222 }

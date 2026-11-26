@@ -9,11 +9,11 @@
  *   --fleet <path>   fleet repo (controller mode only; default ./airstack.yaml, no parent walk)
  */
 
-import pkg from '../package.json' with { type: 'json' }
 import { resolveMode, checkVerb, type VerbSpec } from './lib/mode.js'
 import { Output, EXIT } from './lib/output.js'
+import * as core from './lib/core.js'
 
-const VERSION = pkg.version
+const VERSION = core.VERSION
 
 const VERBS: (VerbSpec & { description: string })[] = [
   { name: 'whoami', requires: 'any', description: 'mode, machine/fleet, user, version, enabled verbs' },
@@ -72,7 +72,7 @@ if (!gate.ok) {
 
 switch (verb.name) {
   case 'version':
-    out.info(`airstack ${VERSION}`)
+    out.info(`airstack ${core.versionLabel()}`)
     process.exit(EXIT.OK)
   case 'help':
     printHelp()

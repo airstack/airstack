@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process'
 import { join, relative } from 'node:path'
 import { loadFleet, loadMachine, selectTargets, type Fleet } from '../lib/fleet.js'
 import { checkPluginScopes, loadPluginRef } from '../lib/fleet-check.js'
+import { lintMachine } from '../lib/fleet-lint.js'
 import { buildUnits, MACHINE_UNIT, type DeployUnit } from '../lib/units.js'
 import { runDeploy } from '../deploy/runner.js'
 import { createLoggingExecutor, createRemoteExecutor, sshConfigFromHost } from '../lib/ssh.js'
@@ -21,6 +22,7 @@ import { markerYaml, readMarker, writeMarker, type MarkerStack } from '../lib/ma
 import { LEGACY_MANIFEST_DIR } from '../lib/paths.js'
 import { SETUP_STEPS } from '../vps-setup.js'
 import { runInstall } from '../lib/install.js'
+import { rolloutBinary, wantedVersion } from '../lib/release/rollout.js'
 import { EXIT, type Output } from '../lib/output.js'
 import type { DeployContext, DeployPhase, Plugin, RemoteExecutor } from '../types.js'
 
@@ -120,7 +122,7 @@ export async function deployCommand(args: string[], fleetPath: string, version: 
 
 async function deployMachine(fleet: Fleet, name: string, f: Flags, version: string, out: Output): Promise<{ ok: boolean; note: string }> {
   const m = loadMachine(fleet, name)
-  const issues = [...m.issues, ...(await checkPluginScopes(fleet, m))]
+  const issues = [...m.issues, ...(await checkPluginScopes(fleet, m)), ...(await lintMachine(fleet, m))]
   for (const i of issues) {
     const where = i.key ? `${i.file} ${i.key}` : i.file
     if (i.level === 'fail') out.fail(`${name}: ${where}: ${i.message}`)
@@ -170,6 +172,16 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
     if (mk.exitCode !== 0) {
       out.fail(`${name}: cannot create ${m.root} for ${su}: ${(mk.stderr || mk.stdout).trim()}`)
       return { ok: false, note: 'machine root' }
+    }
+
+    // The node's own airstack (node verbs, config history). Not in --dry-run: that changes nothing.
+    if (!f.dryRun) {
+      const bin = await rolloutBinary(remote, wantedVersion(fleet), (s) => out.next(`${name}: ${s}`))
+      if (!bin.ok) {
+        out.fail(`${name}: ${bin.note}`)
+        return { ok: false, note: 'airstack binary' }
+      }
+      out.ok(`${name}: ${bin.note}`)
     }
   }
 

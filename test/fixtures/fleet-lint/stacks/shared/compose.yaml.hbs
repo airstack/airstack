@@ -1,0 +1,10 @@
+services:
+  app:
+    image: busybox:1.36
+    networks: [stack-net]
+    ports:
+      - "127.0.0.1:{{stack.values.port}}:8080"
+networks:
+  stack-net:
+    external: {{#if stack.values.notExternal}}false{{else}}true{{/if}}
+    name: airstack

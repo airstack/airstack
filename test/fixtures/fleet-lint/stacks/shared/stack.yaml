@@ -1,0 +1,5 @@
+# Joins the machine's shared airstack network (root daemon only).
+values:
+  port: 3000
+templates:
+  compose.yaml: { src: compose.yaml.hbs }

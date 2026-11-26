@@ -1,0 +1,2 @@
+templates:
+  compose.yaml: { src: compose.yaml.hbs }

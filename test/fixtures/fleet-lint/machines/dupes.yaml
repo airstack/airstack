@@ -1,0 +1,18 @@
+machine: dupes
+host:
+  ip: 203.0.113.34
+  users: { sudo: adminroot, stack: stackroot }
+stacks:
+  web-a:
+    stack: web
+    values: { port: 8081 }
+  web-b:
+    stack: web
+    composeProject: web-a
+    installDir: /srv/airstack/stacks/web-a
+    values: { port: 8082 }
+  web-c:
+    stack: web
+    composeProject: airstack
+    installDir: /srv/airstack/stacks/web-a/sub
+    values: { port: 8083 }

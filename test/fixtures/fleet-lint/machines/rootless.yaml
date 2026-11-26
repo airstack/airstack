@@ -1,0 +1,16 @@
+machine: rootless
+host:
+  ip: 203.0.113.32
+  users: { sudo: adminroot, stack: stackroot, dev: [devuser] }
+stacks:
+  shared:
+    user: devuser
+  web:
+    user: devuser
+    values: { port: 80 }
+  cliproxy:
+    stack: airstack/cliproxy
+    user: devuser
+  shared-root:
+    stack: shared
+    values: { port: 3001, notExternal: true }

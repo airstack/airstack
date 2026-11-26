@@ -1,0 +1,20 @@
+# No lint issues: loopback and tailnet binds of one port do not collide.
+machine: clean
+host:
+  ip: 203.0.113.30
+  users: { sudo: adminroot, stack: stackroot }
+plugins:
+  airstack/tailscale:
+    ports: [8317, 8081, 3773]
+    serve:
+      - { port: 3773, to: 127.0.0.1:8081 }
+stacks:
+  cliproxy:
+    stack: airstack/cliproxy
+  web-a:
+    stack: web
+    values: { port: 8081, bind: 127.0.0.1 }
+  web-b:
+    stack: web
+    values: { port: 8081, bind: 100.64.0.1 }
+  shared: {}
