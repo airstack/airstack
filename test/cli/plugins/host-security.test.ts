@@ -660,7 +660,8 @@ describe.skipIf(process.platform !== 'linux')('host_security.sh built-ins on a r
         encoding: 'utf-8', timeout: 60_000,
       })
       expect(tg.status).toBe(0)
-      expect(tg.stdout).toMatch(/^<b>Security:<\/b>\n[\s\S]*\nISSUES=\d+\n$/)
+      // --telegram protocol: CHECK|… and INFO|… lines, then ISSUES=<n> last.
+      expect(tg.stdout).toMatch(/^((CHECK|INFO)\|[^\n]*\n)*ISSUES=\d+\n$/)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
