@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { mkdirSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { register } from '../../../cli/plugins/backup/index'
-import { loadConfig } from '../../../cli/lib/config'
+import { loadConfig } from '../../support/legacy-config'
 import { nullLogger, setupProject } from '../helpers'
 import type { DeployContext } from '../../../cli/types'
 

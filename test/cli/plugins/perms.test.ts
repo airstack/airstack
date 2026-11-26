@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs'
 import { register as registerBackup } from '../../../cli/plugins/backup/index'
 import { register as registerProxy } from '../../../cli/plugins/cliproxyapi/index'
 import { postSync } from '../../../cli/deploy/02c-post-sync'
-import { loadConfig } from '../../../cli/lib/config'
+import { loadConfig } from '../../support/legacy-config'
 import { nullLogger, setupProject } from '../helpers'
 import type { DeployContext } from '../../../cli/types'
 

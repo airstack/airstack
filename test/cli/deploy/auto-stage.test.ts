@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { nullLogger, setupProject } from '../helpers'
-import { loadConfig } from '../../../cli/lib/config'
+import { loadConfig } from '../../support/legacy-config'
 import type { DeployContext, Plugin } from '../../../cli/types'
 
 function makeCtx(root: string, plugins: Plugin[] = []): DeployContext {

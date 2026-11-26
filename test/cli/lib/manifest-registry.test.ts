@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadConfig } from '../../../cli/lib/config'
+import { loadConfig } from '../../support/legacy-config'
 import { stage } from '../../../cli/lib/stage'
 import { setupProject } from '../helpers'
 

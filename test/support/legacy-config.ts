@@ -1,23 +1,16 @@
 /**
- * config.ts — Config loader for cli.
- *
- * Reads stack.yml + .env, resolves ${VAR} references, applies <<+,
- * and returns a fully typed Config object.
- *
- * This is the single source of truth for all config defaults in cli.
- *
- * Only this config file is allowed to read from .env and stack.yml
- * except for config-writer.ts when updating a config value.
- *
+ * legacy-config.ts — test support only. Builds a deploy Config from a stack-cli style project
+ * (stack.yml + .env). The plugin and phase tests use it to make contexts; airstack itself builds
+ * Configs from the fleet model (cli/lib/units.ts).
  */
 
 import { readFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import * as yaml from 'js-yaml'
 import * as dotenv from 'dotenv'
-import { resolveDefaults } from './defaults.js'
-import { resolveTz } from './schedule-time.js'
-import type { Config, HostConfig, DeployConfig, TemplateEntry, StackConfig } from '../types.js'
+import { resolveDefaults } from '../../cli/lib/defaults.js'
+import { resolveTz } from '../../cli/lib/schedule-time.js'
+import type { Config, HostConfig, DeployConfig, TemplateEntry, StackConfig } from '../../cli/types.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

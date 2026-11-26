@@ -13,6 +13,6 @@
     "isolatedModules": true,
     "types": ["bun-types"]
   },
-  "include": ["cli/**/*.ts", "plugins/**/*.ts", "hooks/**/*.ts", "templates/**/*.ts", "test/cli/**/*.ts"],
-  "exclude": ["node_modules", "dist", ".airstack"]
+  "include": ["cli/**/*.ts", "test/**/*.ts", "devutils/**/*.ts"],
+  "exclude": ["node_modules", "dist", ".airstack", "test/fixtures"]
 }
