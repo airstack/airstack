@@ -23,6 +23,7 @@ const VERBS: (VerbSpec & { description: string })[] = [
   { name: 'versions', requires: 'any', description: 'installed airstack versions on this machine' },
   { name: 'update', requires: 'any', mutating: true, description: 'install the newest airstack release here (nodes: off by default)' },
   { name: 'install', requires: 'any', mutating: true, description: 'install <version>: a given airstack release here' },
+  { name: 'init', requires: 'controller', mutating: true, description: 'init [<dir>]: create a new fleet repo skeleton (no fleet needed)' },
   { name: 'fleet', requires: 'controller', needsFleet: true, description: 'list | show | config | check | plugin' },
   { name: 'deploy', requires: 'controller', needsFleet: true, mutating: true, description: 'deploy machines (--install for first-time setup)' },
   { name: 'status', requires: 'controller', needsFleet: true, description: 'containers per stack instance on each machine' },
@@ -133,6 +134,10 @@ switch (verb.name) {
   case 'machine': {
     const { machineCommand } = await import('./commands/machine/index.js')
     process.exit(machineCommand(args, out))
+  }
+  case 'init': {
+    const { initCommand } = await import('./commands/init.js')
+    process.exit(initCommand(args, out))
   }
 }
 

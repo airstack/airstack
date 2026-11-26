@@ -47,7 +47,7 @@ export async function writeRedactSecrets(remote: RemoteExecutor, m: Machine): Pr
 export async function ensureAdminGroup(remote: RemoteExecutor, admins: string[]): Promise<{ ok: boolean; note: string }> {
   const bad = admins.filter((u) => !USER_RE.test(u))
   if (bad.length) return { ok: false, note: `bad user name(s) in host.users.admins: ${bad.join(', ')}` }
-  const rule = `# Written by airstack deploy. Members of ${ADMIN_GROUP} may run node verbs as root.\n%${ADMIN_GROUP} ALL=(root) NOPASSWD: ${NODE_BIN} machine *\n`
+  const rule = `# Written by airstack deploy. Members of ${ADMIN_GROUP} may run node verbs as root.\n%${ADMIN_GROUP} ALL=(root) NOPASSWD: ${NODE_BIN} machine *, ${NODE_BIN} doctor, ${NODE_BIN} doctor *\n`
   const g = await remote.run(`getent group ${ADMIN_GROUP} >/dev/null || sudo groupadd --system ${ADMIN_GROUP}`)
   if (g.exitCode !== 0) return { ok: false, note: `cannot create group ${ADMIN_GROUP}` }
   for (const u of admins) {

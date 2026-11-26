@@ -88,7 +88,7 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
   const remote: RemoteExecutor | undefined = f.stage ? undefined : createRemoteExecutor(sshConfigFromHost(machineUnit.config.host))
 
   if (f.install) {
-    const r = await runInstall(fleet, m, machineUnit, { step: f.step, finalize: f.finalize }, out)
+    const r = await runInstall(fleet, m, machineUnit, { step: f.step, finalize: f.finalize, undo: f.undo }, out)
     if (!r.ok || f.step) return r
     if (!(await writeMarker(remote!, markerYaml(fleet, m, version)))) {
       out.fail(`${name}: could not write /etc/airstack/machine.yaml`)
@@ -133,7 +133,7 @@ async function deployMachine(fleet: Fleet, name: string, f: Flags, version: stri
     else out.fail(`${name}/${inst}: prune failed: docker compose down did not succeed`)
   }
   // Unpruned orphans stay listed in the marker so the next deploy still sees them.
-  if (f.prune && prep.orphans.length && !(await writeMarker(remote, markerYaml(fleet, m, prep.version, {})))) {
+  if (f.prune && prep.orphans.length && !(await writeMarker(remote, markerYaml(fleet, m, prep.version, {}, prep.keep)))) {
     out.warn(`${name}: could not refresh /etc/airstack/machine.yaml`)
   }
 

@@ -9,6 +9,7 @@ import { checkPluginScopes } from '../lib/fleet-check.js'
 import { lintMachine } from '../lib/fleet-lint.js'
 import { isPlainObject, joinPath } from '../lib/merge.js'
 import { EXIT, type Output } from '../lib/output.js'
+import { secretsFile, upsertSecret } from '../lib/secrets-writer.js'
 
 export const FLEET_USAGE = `Usage: airstack fleet <command>
 
@@ -201,6 +202,10 @@ async function pluginCmd(fleet: Fleet, args: string[], out: Output): Promise<num
         sharedPaths: unit.sharedPaths,
         updateConfig: (dotPath: string) => {
           throw new Error(`updateConfig(${dotPath}) is not supported for fleet machines yet: put the value in .airstack/secrets/${m.name}.jsonc`)
+        },
+        saveSecret: (key: string, value: string) => {
+          upsertSecret(fleet.root, m.name, key, value)
+          return relative(process.cwd(), secretsFile(fleet.root, m.name))
         },
       })
       return EXIT.OK

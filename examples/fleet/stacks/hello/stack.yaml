@@ -1,0 +1,9 @@
+# A reusable stack. A machine file runs it as one or more instances; each instance gets its own
+# compose project, install dir and run user. The machine overlay can change any key below.
+values:                          # free-form; the compose template reads them as {{stack.values.*}}
+  port: 8080                     # host port, published on 127.0.0.1 only
+  tunnel: false                  # true: join the shared `airstack` network (root daemon only)
+templates:                       # destination on the machine -> source in this dir
+  compose.yaml: { src: compose.yaml.hbs }
+deploy:
+  sync: { default: delete }      # files deploy did not ship are removed from the install dir

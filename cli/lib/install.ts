@@ -57,7 +57,7 @@ export async function pickConnection(m: Machine, config: Config, timeoutSec = 6)
 export interface InstallResult { ok: boolean; note: string }
 
 export async function runInstall(
-  fleet: Fleet, m: Machine, unit: DeployUnit, opts: { step?: string; finalize?: boolean }, out: Output,
+  fleet: Fleet, m: Machine, unit: DeployUnit, opts: { step?: string; finalize?: boolean; undo?: boolean }, out: Output,
 ): Promise<InstallResult> {
   const name = m.name
   const s = m.host.ssh
@@ -71,7 +71,7 @@ export async function runInstall(
         projectRoot: m.dir ?? fleet.root,
         sharedPaths: [fleet.root, CORE_ROOT],
         persistSecret: (k, v) => upsertSecret(fleet.root, name, k, v),
-        flags: { finalize },
+        flags: { finalize, undo: opts.undo, quiet: !opts.step },
       })
       out.ok(`${name}: setup ${step}${finalize ? ' --finalize' : ''}`)
       return true

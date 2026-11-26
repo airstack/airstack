@@ -19,8 +19,18 @@ export interface MarkerStack {
   composeProject: string
 }
 
-/** `orphans`: instances removed from the machine file but not pruned yet (kept listed so later deploys still see them). */
-export function markerYaml(fleet: Fleet, machine: Machine, version: string, orphans: Record<string, MarkerStack> = {}): string {
+/** Fields an owner may set by hand on the machine. Deploy keeps them when it rewrites the marker. */
+export interface MarkerKeep {
+  roles?: string[]
+  controller?: unknown
+  update?: unknown
+}
+
+/**
+ * `orphans`: instances removed from the machine file but not pruned yet (kept listed so later deploys still see them).
+ * `keep`: hand-set fields from the current marker (roles, controller, update).
+ */
+export function markerYaml(fleet: Fleet, machine: Machine, version: string, orphans: Record<string, MarkerStack> = {}, keep: MarkerKeep = {}): string {
   const stacks: Record<string, MarkerStack & { orphan?: boolean }> = {}
   for (const i of machine.instances) {
     stacks[i.name] = { installDir: i.installDir, user: i.user, userKind: i.userKind, composeProject: i.composeProject }
@@ -29,23 +39,29 @@ export function markerYaml(fleet: Fleet, machine: Machine, version: string, orph
   const doc = {
     machine: machine.name,
     fleet: fleet.name,
-    roles: ['node'],
+    roles: keep.roles?.length ? keep.roles : ['node'],
+    ...(keep.controller !== undefined ? { controller: keep.controller } : {}),
     paths: { root: machine.root, stackUser: machine.host.users.stack, adminGroup: 'airstack-admin' },
     stacks,
-    update: { source: 'controller', allowSourceUpdate: false },
+    update: keep.update ?? { source: 'controller', allowSourceUpdate: false },
     airstack: { version },
   }
   return `# Written by airstack deploy. The only global marker for this node. Root-owned on purpose.\n${yaml.dump(doc, { lineWidth: 120 })}`
 }
 
-export async function readMarker(remote: RemoteExecutor): Promise<{ exists: boolean; stacks: Record<string, MarkerStack> }> {
+export async function readMarker(remote: RemoteExecutor): Promise<{ exists: boolean; stacks: Record<string, MarkerStack>; keep: MarkerKeep }> {
   const r = await remote.run(`sudo cat ${MARKER_PATH} 2>/dev/null`)
-  if (r.exitCode !== 0 || !r.stdout.trim()) return { exists: false, stacks: {} }
+  if (r.exitCode !== 0 || !r.stdout.trim()) return { exists: false, stacks: {}, keep: {} }
   try {
-    const doc = (yaml.load(r.stdout) ?? {}) as { stacks?: Record<string, MarkerStack> }
-    return { exists: true, stacks: doc.stacks ?? {} }
+    const doc = (yaml.load(r.stdout) ?? {}) as { stacks?: Record<string, MarkerStack> } & MarkerKeep
+    const keep: MarkerKeep = {
+      roles: Array.isArray(doc.roles) ? doc.roles.map(String) : undefined,
+      controller: doc.controller,
+      update: doc.update,
+    }
+    return { exists: true, stacks: doc.stacks ?? {}, keep }
   } catch {
-    return { exists: true, stacks: {} }
+    return { exists: true, stacks: {}, keep: {} }
   }
 }
 

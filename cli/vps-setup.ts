@@ -38,6 +38,8 @@ export interface SetupFlags {
   force?: boolean
   noLockRoot?: boolean
   distro?: string
+  /** Part of a full --install run: skip the "next steps" hints (--install does those steps). */
+  quiet?: boolean
 }
 
 export interface SetupOptions {
@@ -71,7 +73,7 @@ export async function runVpsSetup(step: SetupStep, opts: SetupOptions): Promise<
   const f = opts.flags ?? {}
   flags = {
     finalize: !!f.finalize, sysbox: !!f.sysbox, undo: !!f.undo, force: !!f.force, noLockRoot: !!f.noLockRoot,
-    distro: f.distro,
+    quiet: !!f.quiet, distro: f.distro,
   }
   ssh = { host: config.host.ip, port: config.host.sshPort, user: config.host.sshUser, keyPath: config.host.sshKey }
   if (!ssh.host) fail('No machine address: set host.ip in the machine file.')
@@ -147,6 +149,7 @@ async function cmdBase() {
   }
 
   console.log(`\n\x1b[32mBase setup complete.\x1b[0m`)
+  if (flags.quiet) return
   console.log(`\nNext steps (--install runs them for you):`)
   console.log(
     `  1. Test SSH as ${sudoUser}: ssh -i ${ssh.keyPath} -p ${ssh.port} ${sudoUser}@${ssh.host}`
@@ -188,6 +191,7 @@ async function cmdHarden() {
     console.log(`\n\x1b[32mSSH hardening finalized. Port ${config.host.sshBootstrapPort ?? 22} is closed.\x1b[0m`)
   } else {
     console.log(`\n\x1b[32mHardening complete.\x1b[0m`)
+    if (flags.quiet) return
     console.log(`\nNext steps (--install runs them for you):`)
     console.log(
       `  1. Test the new SSH port: ssh -i ${ssh.keyPath} -p ${hardenedPort} ${sudoUser}@${ssh.host}`
@@ -370,6 +374,7 @@ async function cmdVerify() {
       APP_USER: appUser,
       DEV_USERS: config.host.devUsers.join(' '),
       SSH_PORT: String(config.host.sshPort),
+      SSH_BOOTSTRAP_PORT: String(config.host.sshBootstrapPort ?? 22),
       INSTALL_DIR: config.stack.installDir,
       INSTALL_SYSBOX: sysboxEnabled() ? 'true' : 'false',
     },

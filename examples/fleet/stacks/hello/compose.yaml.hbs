@@ -1,0 +1,18 @@
+{{!-- Rendered once per instance. stack.projectName is the instance's compose project
+     (the instance name by default), so two instances never share container names. --}}
+services:
+  whoami:
+    image: traefik/whoami:v1.10
+    container_name: {{stack.projectName}}-whoami
+    restart: unless-stopped
+    command: ["--port", "8080", "--name", "{{stack.projectName}}"]
+    ports:
+      - "127.0.0.1:{{stack.values.port}}:8080"
+{{#if stack.values.tunnel}}
+    networks: [stack-net]
+networks:
+  # The shared bridge network of the machine project. Only root-daemon stacks can join it.
+  stack-net:
+    external: true
+    name: airstack
+{{/if}}

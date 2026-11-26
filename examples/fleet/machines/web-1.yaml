@@ -1,0 +1,77 @@
+# One machine. The file name (web-1.yaml) and `machine:` must be the same.
+# This file describes the FINISHED machine. `airstack deploy web-1 --install` gets a fresh box there.
+machine: web-1
+
+host:
+  hostname: web-1
+  ip: 192.0.2.10                 # or a secret: ip: ${WEB1_IP}
+  timezone: America/New_York
+  ssh:
+    user: adminroot              # the admin who runs deploys (default: users.sudo)
+    port: 222                    # SSH port after setup (default 222)
+    key: ~/.ssh/id_ed25519       # private key on this controller; --install copies the public key
+    # A fresh box answers on bootstrapPort as bootstrapUser. --install moves SSH to `port`,
+    # reboots, and closes bootstrapPort only when `port` answers after the reboot.
+    # bootstrapPort: 22          # default 22
+    # bootstrapUser: root        # default root
+  users:
+    sudo: adminroot              # admin: sudo + SSH key
+    stack: stackroot             # stack owner: root Docker daemon, no login (docs/LAYOUT.md)
+    dev: [deployuser]            # dev accounts: each gets its own rootless Docker
+    admins: [adminroot]          # group airstack-admin: may run `airstack machine ...` on the box
+
+# root: /srv/airstack            # machine root (default /srv/airstack)
+
+# Machine-level plugins. Built-in plugins always start with airstack/.
+plugins:
+  airstack/cron:
+    defaultTimezone: America/New_York
+    crons:
+      # host_ crons check the whole machine. They are allowed only here, never in a stack.
+      host_alerter:
+        schedule: "*/15 * * * *"
+        env:
+          TELEGRAM_BOT_TOKEN: ${HOSTALERT_TELEGRAM_BOT_TOKEN}
+          TELEGRAM_CHAT_ID: ${HOSTALERT_TELEGRAM_CHAT_ID}
+      host_alerter_report:
+        schedule: "9:30 AM"
+        script: host_alerter.sh --report
+        env:
+          TELEGRAM_BOT_TOKEN: ${HOSTALERT_TELEGRAM_BOT_TOKEN}
+          TELEGRAM_CHAT_ID: ${HOSTALERT_TELEGRAM_CHAT_ID}
+      host_cleanup:
+        schedule: "4:00 AM"
+
+  # Cloudflare Tunnel: a cloudflared container in the machine project `airstack`.
+  # You add the public hostnames (routes) in the Cloudflare dashboard. A route to the
+  # hello stack: http://hello-whoami:8080
+  airstack/cloudflare:
+    tunnelToken: ${CLOUDFLARE_TUNNEL_TOKEN}
+    access:
+      required: true             # every public hostname must be behind Cloudflare Access
+      exempt: []                 # public on purpose, e.g. [hooks.example.com, app.example.com/webhook]
+      onDeploy: refuse           # refuse: deploy stops cloudflared and fails | warn
+      onScan: alert              # alert | stop: the 15-minute check stops cloudflared
+
+# Stack instances: instance name -> overlay on the stack. With no `stack:` key, the instance
+# uses stacks/<instance name>/ in this fleet repo.
+stacks:
+  # Fleet stack stacks/hello, run by the stack owner (root Docker daemon).
+  hello:
+    values:
+      port: 8080
+      tunnel: true               # join the shared `airstack` network (cloudflared reaches it)
+
+  # The same stack again, run by a dev account in its rootless Docker.
+  hello-dev:
+    stack: hello
+    user: deployuser
+    values:
+      port: 8081
+
+  # Built-in stack: CLIProxyAPI on port 8317 (docs/CLIPROXYAPI.md). Before the first deploy, copy
+  # its config.yaml to <installDir>/.cliproxyapi/config.yaml on the machine, or deploy fails.
+  # cliproxy:
+  #   stack: airstack/cliproxy
+  #   plugins:
+  #     airstack/cliproxyapi: { memory: 1G }

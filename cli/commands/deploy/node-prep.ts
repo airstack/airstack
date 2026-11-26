@@ -5,7 +5,7 @@
  */
 
 import type { Fleet, Machine } from '../../lib/fleet.js'
-import { markerYaml, readMarker, writeMarker, type MarkerStack } from '../../lib/marker.js'
+import { markerYaml, readMarker, writeMarker, type MarkerKeep, type MarkerStack } from '../../lib/marker.js'
 import { rolloutBinary, wantedVersion } from '../../lib/release/rollout.js'
 import { ensureAdminGroup, writeRedactSecrets } from '../../lib/node-setup.js'
 import type { Output } from '../../lib/output.js'
@@ -18,11 +18,12 @@ export interface NodePrep {
   previous: Record<string, MarkerStack>
   orphans: [string, MarkerStack][]
   version: string
+  keep: MarkerKeep
 }
 
 export async function prepareNode(remote: RemoteExecutor, fleet: Fleet, m: Machine, f: Flags, version: string, out: Output): Promise<NodePrep> {
   const name = m.name
-  const fail = (note: string): NodePrep => ({ ok: false, note, previous: {}, orphans: [], version })
+  const fail = (note: string): NodePrep => ({ ok: false, note, previous: {}, orphans: [], version, keep: {} })
 
   const marker = await readMarker(remote)
   if (!marker.exists) {
@@ -43,7 +44,7 @@ export async function prepareNode(remote: RemoteExecutor, fleet: Fleet, m: Machi
   }
 
   // --dry-run changes nothing outside the units: no binary, no helper files, no marker.
-  if (f.dryRun) return { ok: true, note: '', previous, orphans, version }
+  if (f.dryRun) return { ok: true, note: '', previous, orphans, version, keep: marker.keep }
 
   const bin = await rolloutBinary(remote, wantedVersion(fleet), (s) => out.next(`${name}: ${s}`))
   if (!bin.ok) {
@@ -57,9 +58,9 @@ export async function prepareNode(remote: RemoteExecutor, fleet: Fleet, m: Machi
   const g = await ensureAdminGroup(remote, m.host.users.admins)
   if (!g.ok) out.warn(`${name}: ${g.note}`)
 
-  if (!(await writeMarker(remote, markerYaml(fleet, m, nodeVersion, Object.fromEntries(orphans))))) {
+  if (!(await writeMarker(remote, markerYaml(fleet, m, nodeVersion, Object.fromEntries(orphans), marker.keep)))) {
     out.fail(`${name}: could not write /etc/airstack/machine.yaml`)
     return fail('marker write failed')
   }
-  return { ok: true, note: '', previous, orphans, version: nodeVersion }
+  return { ok: true, note: '', previous, orphans, version: nodeVersion, keep: marker.keep }
 }

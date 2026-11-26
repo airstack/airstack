@@ -1,0 +1,12 @@
+# .airstack/ holds secrets, staged deploy trees, logs and pulled machine files.
+# Never commit it. deploy refuses to run when .airstack/ is not gitignored.
+#
+# This example keeps one file from .airstack/ in git: the secrets TEMPLATE
+# (.airstack/secrets/*.example.jsonc, placeholder values only). The real secrets files
+# (_fleet.jsonc, <machine>.jsonc) stay ignored. If you do not want a template in git,
+# replace all lines below with the single line: .airstack/
+!.airstack/
+.airstack/*
+!.airstack/secrets/
+.airstack/secrets/*
+!.airstack/secrets/*.example.jsonc

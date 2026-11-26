@@ -4,9 +4,9 @@ set -euo pipefail
 # From: Playbook 02, steps 2.3, 2.4, 2.5
 #
 # Two-phase operation:
-#   Phase 1 (default): Sets up hardened SSH port alongside port 22, configures
-#     all security. Port 22 stays open as safety net.
-#   Phase 2 (FINALIZE=true): Closes port 22, restricts AllowUsers.
+#   Phase 1 (default): Sets up the hardened SSH port next to the bootstrap port, configures
+#     all security. The bootstrap port stays open as a safety net.
+#   Phase 2 (FINALIZE=true): Closes the bootstrap port, restricts AllowUsers.
 #
 # Required env:
 #   SSH_PORT             Current SSH port (default: 22)
@@ -16,7 +16,8 @@ set -euo pipefail
 # Optional env:
 #   SSH_CURRENT_USER     Current SSH user to keep during transition (default: root)
 #   SWAP_SIZE            Swap file size (default: 8G)
-#   FINALIZE             If "true", run phase 2 (close port 22)
+#   FINALIZE             If "true", run phase 2 (close the bootstrap port)
+#   SSH_BOOTSTRAP_PORT   Port of the fresh machine (default: 22)
 #
 # Output: SETUP_HARDEN_OK or SETUP_HARDEN_FINALIZE_OK
 
@@ -24,6 +25,7 @@ CURRENT_STEP=""
 trap 'if [ $? -ne 0 ]; then echo "FAILED during: ${CURRENT_STEP:-unknown step}" >&2; fi' EXIT
 
 SSH_PORT="${SSH_PORT:-22}"
+BOOT_PORT="${SSH_BOOTSTRAP_PORT:-22}"   # the port a fresh machine answers on (host.ssh.bootstrapPort)
 SUDO_USER="${SUDO_USER:-admin}"
 SSH_CURRENT_USER="${SSH_CURRENT_USER:-root}"
 SWAP_SIZE="${SWAP_SIZE:-8G}"
@@ -61,7 +63,7 @@ EOF
   systemctl restart ssh.socket
 
   # Remove the bootstrap port (default 22) from UFW
-  BOOT_PORT="${SSH_BOOTSTRAP_PORT:-22}"
+
   CURRENT_STEP="UFW remove port ${BOOT_PORT}"
   if [ "${BOOT_PORT}" != "${SSH_HARDENED_PORT}" ]; then
     ufw delete allow "${BOOT_PORT}/tcp" 2>/dev/null || true
@@ -81,7 +83,7 @@ EOF
   exit 0
 fi
 
-# ── Phase 1: Full hardening with port 22 safety net ──────────────────────────
+# ── Phase 1: Full hardening, the bootstrap port stays open as a safety net ──────────────────────────
 
 # ── 1. UFW Firewall ─────────────────────────────────────────────────────────
 
@@ -91,14 +93,14 @@ echo "==> Configuring UFW firewall..."
 ufw default deny incoming
 ufw default allow outgoing
 
-# Keep port 22 during transition + add hardened port
-ufw allow 22/tcp
+# Keep the bootstrap port during the transition, and add the hardened port
+ufw allow "${BOOT_PORT}/tcp"
 ufw allow "${SSH_HARDENED_PORT}/tcp"
 
 # Enable (--force skips interactive prompt)
 ufw --force enable
 
-echo "  UFW active: ports 22 and ${SSH_HARDENED_PORT} allowed"
+echo "  UFW active: ports ${BOOT_PORT} and ${SSH_HARDENED_PORT} allowed"
 
 # ── 2. SSH Hardening ────────────────────────────────────────────────────────
 
@@ -154,8 +156,8 @@ mkdir -p /etc/systemd/system/ssh.socket.d
 cat > /etc/systemd/system/ssh.socket.d/override.conf << EOF
 [Socket]
 ListenStream=
-ListenStream=0.0.0.0:22
-ListenStream=[::]:22
+ListenStream=0.0.0.0:${BOOT_PORT}
+ListenStream=[::]:${BOOT_PORT}
 ListenStream=0.0.0.0:${SSH_HARDENED_PORT}
 ListenStream=[::]:${SSH_HARDENED_PORT}
 EOF
@@ -182,7 +184,7 @@ if ! ss -tlnp | grep -q ":${SSH_HARDENED_PORT} "; then
   echo "ERROR: SSH does not listen on port ${SSH_HARDENED_PORT} after the restart" >&2
   exit 1
 fi
-echo "  SSH listening on ports 22 and ${SSH_HARDENED_PORT}"
+echo "  SSH listening on ports ${BOOT_PORT} and ${SSH_HARDENED_PORT}"
 
 # ── 3. Swap ─────────────────────────────────────────────────────────────────
 

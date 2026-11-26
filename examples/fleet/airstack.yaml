@@ -1,0 +1,9 @@
+# Fleet root marker. airstack finds the fleet through this file:
+#   ./airstack.yaml, --fleet <path>, or `fleet:` in ~/.config/airstack/config.yaml (never a parent dir).
+airstack:
+  # The airstack version every machine runs. deploy and `airstack fleet update` put this version on
+  # the machines. `airstack doctor` warns when your own airstack is a different version.
+  version: 0.1.0
+fleet:
+  # Shown by whoami and fleet list, and written to /etc/airstack/machine.yaml on each machine.
+  name: example-fleet

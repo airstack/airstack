@@ -104,10 +104,11 @@ else
   fail "Port ${SSH_PORT} not allowed in UFW"
 fi
 
-if ufw status | grep -qE "^22/tcp\s+ALLOW" && [ "${SSH_PORT}" != "22" ]; then
-  warn "Port 22 is still open (to close it: airstack deploy <machine> --install --step harden --finalize)"
+BOOT_PORT="${SSH_BOOTSTRAP_PORT:-22}"
+if ufw status | grep -qE "^${BOOT_PORT}/tcp\s+ALLOW" && [ "${SSH_PORT}" != "${BOOT_PORT}" ]; then
+  warn "Bootstrap port ${BOOT_PORT} is still open (--install closes it after the reboot; by hand: airstack deploy <machine> --install --step harden --finalize)"
 else
-  pass "Port 22 not open (or is the SSH port)"
+  pass "Bootstrap port ${BOOT_PORT} is closed (or is the SSH port)"
 fi
 echo ""
 

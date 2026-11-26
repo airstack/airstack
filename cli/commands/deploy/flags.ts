@@ -14,6 +14,7 @@ export const DEPLOY_USAGE = `Usage: airstack deploy <machine>... | '<pattern>' |
                        write /etc/airstack/machine.yaml, then deploy
   --install --step <s> run one setup step only (${SETUP_STEPS.join(', ')})
   --finalize           with --step harden: close the bootstrap port by hand (--install does it itself)
+  --undo               with --step lockdown: open the external SSH port again
   -v, --verbose        phase-by-phase output
 
 Quote patterns: airstack deploy 'airstack-*'  (zsh aborts or expands unquoted globs).`
@@ -29,11 +30,12 @@ export interface Flags {
   install: boolean
   step?: string
   finalize: boolean
+  undo: boolean
   verbose: boolean
 }
 
 export function parseFlags(args: string[]): Flags | string {
-  const f: Flags = { targets: [], all: false, stage: false, dryRun: false, force: false, prune: false, install: false, finalize: false, verbose: false }
+  const f: Flags = { targets: [], all: false, stage: false, dryRun: false, force: false, prune: false, install: false, finalize: false, undo: false, verbose: false }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     switch (a) {
@@ -45,6 +47,7 @@ export function parseFlags(args: string[]): Flags | string {
       case '--prune': f.prune = true; break
       case '--install': f.install = true; break
       case '--finalize': f.finalize = true; break
+      case '--undo': f.undo = true; break
       case '--step': f.step = args[++i]; if (!f.step) return '--step needs a step name'; break
       case '-v': case '--verbose': f.verbose = true; break
       default:
@@ -55,6 +58,8 @@ export function parseFlags(args: string[]): Flags | string {
   if (f.step && !f.install) return '--step only works with --install'
   if (f.step && !(SETUP_STEPS as readonly string[]).includes(f.step)) return `unknown step '${f.step}' (${SETUP_STEPS.join(', ')})`
   if (f.stage && f.dryRun) return '--stage and --dry-run are exclusive'
+  if (f.install && (f.stage || f.dryRun)) return '--install changes the machine: it does not work with --stage or --dry-run'
+  if (f.undo && f.step !== 'lockdown') return '--undo only works with --install --step lockdown'
   if (!f.all && f.targets.length === 0) return 'name at least one machine, a quoted pattern, or --all'
   return f
 }

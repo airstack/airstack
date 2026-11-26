@@ -198,6 +198,11 @@ export interface PluginCommandContext {
   sharedPaths: string[]
   /** Write a config value back to the fleet config. Fleet deploys do not support this yet (it throws). */
   updateConfig: (dotPath: string, value: string) => void
+  /**
+   * Save a secret in the machine's secrets file (.airstack/secrets/<machine>.jsonc, mode 600).
+   * Returns the file path. Config then uses it as ${NAME}. Never print the value.
+   */
+  saveSecret?: (name: string, value: string) => string
 }
 
 export interface PluginCommand {

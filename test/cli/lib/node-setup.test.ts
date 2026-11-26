@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ensureAdminGroup, SUDOERS_PATH } from '../../../cli/lib/node-setup'
 import { fakeRemote } from '../node/helpers'
 
-const RULE = '%airstack-admin ALL=(root) NOPASSWD: /usr/local/bin/airstack machine *'
+const RULE = '%airstack-admin ALL=(root) NOPASSWD: /usr/local/bin/airstack machine *, /usr/local/bin/airstack doctor, /usr/local/bin/airstack doctor *'
 
 describe('ensureAdminGroup', () => {
   it('rejects bad user names before any remote call', async () => {

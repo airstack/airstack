@@ -397,10 +397,14 @@ export async function cmdCreateTunnel(ctx: PluginCommandContext, name: string) {
   )
   const token = tokenResp?.result
   if (token) {
-    ctx.updateConfig('stack.cloudflared.tunnelToken', token)
-    info('Tunnel token saved to config')
     console.log(`\nTUNNEL_ID=${tunnelId}`)
-    console.log(`CLOUDFLARE_TUNNEL_TOKEN=${token}`)
+    if (ctx.saveSecret) {
+      const file = ctx.saveSecret('CLOUDFLARE_TUNNEL_TOKEN', token)
+      info(`The tunnel token is saved as CLOUDFLARE_TUNNEL_TOKEN in ${file}.`)
+      info('In the machine file, set: tunnelToken: ${CLOUDFLARE_TUNNEL_TOKEN}')
+    } else {
+      info('Cannot save the tunnel token here. Get it in the Cloudflare dashboard: Zero Trust > Networks > Tunnels.')
+    }
   }
 }
 

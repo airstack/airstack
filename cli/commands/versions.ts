@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs'
 import * as yaml from 'js-yaml'
 import { BUILD, VERSION, versionLabel } from '../lib/core.js'
-import { activateLocal, installLocal, localVersions } from '../lib/release/local-install.js'
+import { installLocal, localVersions } from '../lib/release/local-install.js'
 import { compareVersions, latestVersion } from '../lib/release/latest.js'
 import { nodeVersions, pushRelease, remoteTarget } from '../lib/release/node-install.js'
 import { obtainRelease } from '../lib/release/obtain.js'
@@ -107,16 +107,4 @@ async function updateNode(version: string, out: Output): Promise<number> {
     return EXIT.FAIL
   }
   return EXIT.OK
-}
-
-/** Switch the active controller release (no download). */
-export function useCommand(version: string, out: Output): number {
-  try {
-    activateLocal(version)
-    out.ok(`~/.local/bin/airstack now points to ${version}`)
-    return EXIT.OK
-  } catch (e) {
-    out.fail(e instanceof Error ? e.message : String(e))
-    return EXIT.FAIL
-  }
 }

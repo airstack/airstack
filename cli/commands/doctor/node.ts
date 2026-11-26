@@ -6,7 +6,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, readlinkSync, realpathSync, statSync } from 'node:fs'
+import { chmodSync, chownSync, existsSync, readlinkSync, realpathSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { versionLabel } from '../../lib/core.js'
 import type { ModeInfo } from '../../lib/mode.js'
@@ -51,7 +51,7 @@ export function doctorNode(mode: ModeInfo, fix: boolean, out: Output): void {
   if (!existsSync(join(store, '.git'))) out.warn('no config history yet (the next deploy starts it)')
   else {
     const bad = rootOwned(store, 0o700)
-    if (bad && fix) { chmodSync(store, 0o700); out.ok(`fixed: chmod 700 ${store}`) }
+    if (bad && fix) { chownSync(store, 0, 0); chmodSync(store, 0o700); out.ok(`fixed: root:root, mode 700 on ${store}`) }
     else if (bad) out.fail(`${store}: ${bad} (it holds live files with secrets)`)
     else out.ok(`config history ${store} (root only)`)
   }
@@ -63,7 +63,7 @@ export function doctorNode(mode: ModeInfo, fix: boolean, out: Output): void {
   if (!existsSync(REDACT_PATH)) out.warn(`${REDACT_PATH} is missing, so node output hides fewer secrets. The next deploy writes it.`)
   else {
     const bad = rootOwned(REDACT_PATH, 0o600)
-    if (bad && fix) { chmodSync(REDACT_PATH, 0o600); out.ok(`fixed: chmod 600 ${REDACT_PATH}`) }
+    if (bad && fix) { chownSync(REDACT_PATH, 0, 0); chmodSync(REDACT_PATH, 0o600); out.ok(`fixed: root:root, mode 600 on ${REDACT_PATH}`) }
     else if (bad) out.fail(`${REDACT_PATH}: ${bad}`)
     else out.ok(`${REDACT_PATH} (root only)`)
   }
