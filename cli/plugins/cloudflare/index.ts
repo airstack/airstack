@@ -12,7 +12,7 @@
 import type { DeployContext, Plugin, PluginCommandContext } from '../../types.js'
 import {
   cmdVerify, cmdVerifyApiToken, cmdListTunnels, cmdCreateTunnel, cmdHelp,
-} from './cf-tunnel.js'
+} from './commands.js'
 import { parseAccessConfig } from './access.js'
 import { accessGuard, CF_METRICS } from './deploy-guard.js'
 
