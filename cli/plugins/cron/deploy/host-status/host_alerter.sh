@@ -414,8 +414,7 @@ if $REPORT_MODE; then
   if $backup_ok && [[ -n "$backup_status_text" ]]; then
     chk "✅ Backup: ${backup_status_text} ago"
   elif $backup_ok; then
-    chk "⚠️ Backup: not configured"
-    ((warn_count+=1))
+    details+=("• Backup: no stack on this machine uses the backup plugin")
   else
     chk "⚠️ Backup: $(IFS=';'; echo "${backup_problems[*]}" | sed 's/;/; /g')"
     ((warn_count+=1))

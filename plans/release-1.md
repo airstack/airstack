@@ -55,8 +55,8 @@ leak scan before commits). Commit + push to airstack/airstack as work lands.
       host scripts; no user-visible gain).
 - [x] CHANGELOG, CI + release workflows (parked in `devutils/github-workflows/`: the push token has no
       workflow scope).
-- [ ] README, docs for every verb, example fleet + `airstack init` (in progress).
+- [x] README, docs for every verb (`docs/cli/`), example fleet (`examples/fleet/`), `airstack init`.
 - [ ] LICENSE: BSL 1.1 with "Additional Use Grant: None" forbids production use by others. Owner decides.
-- [ ] End-to-end from a clean VM.
+- [x] End-to-end from a clean VM (airstack-test2, fresh OrbStack Ubuntu 26.04 arm64): one `deploy --install` ran base, harden, docker, rootless, verify, reboot, finalize (port 22 closed), marker, binary, machine unit + 2 stacks (root daemon + rootless dev user), HTTP 200 on both; doctor clean; airstack-admin member reads history without full sudo.
 
 ## 4. HOLD — production-box migration (tomorrow, with the owner)
