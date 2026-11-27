@@ -13,9 +13,13 @@ STATE_DIR="${STATE_DIR:?STATE_DIR not set}"
 
 # --- Security updates ---
 # Simulate upgrade and count packages from security sources
+# security_packages: their names, space-separated (the daily report lists them).
 security_updates=0
+security_packages=""
 if command -v apt-get >/dev/null 2>&1; then
-  security_updates=$(apt-get -s upgrade 2>/dev/null | grep -ci "^inst.*security" || true)
+  sec_lines=$(apt-get -s upgrade 2>/dev/null | grep -i "^inst.*security" || true)
+  security_updates=$(printf '%s' "$sec_lines" | grep -c . || true)
+  security_packages=$(printf '%s\n' "$sec_lines" | awk 'NF { print $2 }' | tr '\n' ' ' | sed 's/ $//')
 fi
 
 # --- Total upgradable packages ---
@@ -47,6 +51,7 @@ uptime_hours=$(( (uptime_seconds % 86400) / 3600 ))
 maintenance_json="{
   \"timestamp\": \"$(date -Iseconds)\",
   \"security_updates\": ${security_updates},
+  \"security_packages\": \"${security_packages}\",
   \"total_upgradable\": ${total_upgradable},
   \"reboot_required\": ${reboot_required},
   \"failed_services\": \"${failed_services}\",

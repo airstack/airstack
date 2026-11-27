@@ -48,30 +48,38 @@ STATUS|label|detail
 
 ## Reading the Telegram report
 
-The daily report has two groups, with a gap between them:
+The daily report has four blocks:
 
 ```text
-📊 my-vps — Daily Status
-⚡ 2 need attention                       (or: ✅ All checks passed)
+📊 VPS web-1 — Daily Status                       title: cron reportTitle, else "📊 <hostname>"
+Host: web-1 · 192.0.2.10                          the machine's main IP (REPORT_SHOW_IP=false hides it)
+290 GB disk · 46 GB RAM · ⏱ up 2 days, 10 hours
 
-⚠️ Open port: tcp/22 is open to the internet     problems first: ❌ FAIL, then ⚠️ WARN
-⚠️ Backup: cliproxy: no backup yet
-✅ Disk: 8% of 403 GB (limit 85%)                 then every check that passed, one ✅ each
-✅ Firewall: ufw active, default deny incoming
-✅ Cloudflare Access: cliproxy.example.com is protected
-✅ SSH: root login no, password auth off
+⚡ 2 need attention                               (or: ✅ All checks passed)
 
+⚠️ Security updates pending: 9                    one entry per problem: title,
+   apt: binutils libbinutils libctf-nobfd0 …      detail lines,
+   🔧 sudo apt-get update && sudo apt-get upgrade  and the fix (when one is known)
 
-Details                                            informational only, no pass/fail
-Reachable from the internet
-• ssh: tcp/222 open to the internet; key-only, root login off
-• tunnel: cliproxy.example.com → http://localhost:8317 (4 connections)
-• Logins (24 h): adminroot from 203.0.113.7 (public) 08:02–09:31, key "laptop"
-⏱ Uptime: 4 days, 12 hours
+⚠️ Keys, sudoers, services
+   Removed since last run: unit:old.service
+   🔧 nothing, if you made this change: the next run accepts it
+
+───
+✅ Disk good: 55% free of 290 GB                  one line per area
+✅ Memory good: 62% free, 24 h average 58% free
+✅ Security good: 12 checks (firewall, SSH, accounts, …)
+───
+✅ 22 checks passed: Disk, Free space, Memory, Load, Docker, Containers, Backup, Firewall, …
 ```
 
-- Every pass/fail check (host health and security) is a line in the first group. Anything that
-  needs no decision (what is reachable, logins, baselines) is in Details.
+- Problems come first: ❌ FAIL, then ⚠️ WARN. Long lists (packages, services) show two lines at most,
+  then "+N".
+- `airstack machine report --full` (or `REPORT_FULL=true`) lists every passed check, then a
+  **Details** block: what is reachable from the internet, recent logins, baselines, uptime.
+- The 24-hour memory average comes from a sample that the 15-minute `host_alerter` run saves.
+- `airstack machine check` prints the same problems as ok/warn/fail lines, with the fix.
+
 - At most 8 detail lines besides the reachability block (`SECURITY_TELEGRAM_MAX_INFO`). A detail
   longer than 200 characters is cut.
 - Telegram allows 4096 characters per message. When the report is too long, detail lines go first,
