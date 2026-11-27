@@ -40,6 +40,7 @@ Put both values in the machine's secrets file and reference them from the cron c
 plugins:
   airstack/cron:
     reportTitle: "📊 VPS web-1"     # optional: first line of reports and alerts (default "📊 <hostname>")
+    reportFull: true                # optional: list every check + a Details block (default: one summary line)
     crons:
       host_alerter:
         schedule: "*/15 * * * *"

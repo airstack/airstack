@@ -19,11 +19,12 @@ describe('lib/report.sh', () => {
       report_pass "✅ Disk: 12% of 290 GB"
       report_line "✅ Firewall: active, deny by default"
       REPORT_OVERVIEW="✅ Disk good: 88% free of 290 GB"
-      report_render "📊 VPS web-1" "Host: web-1 · 192.0.2.10" "290 GB disk · 46 GB RAM · ⏱ up 2 days"`)
+      report_render "📊 VPS web-1" "Host: web-1 · 192.0.2.10" "290 GB disk · 46 GB RAM" "⏱ Uptime: 2 days"`)
     expect(out).toBe([
       '<b>📊 VPS web-1 — Daily Status</b>',
       'Host: web-1 · 192.0.2.10',
-      '290 GB disk · 46 GB RAM · ⏱ up 2 days',
+      '290 GB disk · 46 GB RAM',
+      '⏱ Uptime: 2 days',
       '',
       '<b>⚡ 2 need attention</b>',
       '',
@@ -51,7 +52,7 @@ describe('lib/report.sh', () => {
 
   it('full mode lists every passed check and the details', () => {
     const out = sh(`REPORT_FULL=true; REPORT_DETAILS="• Packages upgradable: 3"; report_pass "✅ Docker"; report_render "t" "h" "s"`)
-    expect(out).toContain('───\n✅ Docker\n\n<b>Details</b>\n• Packages upgradable: 3')
+    expect(out).toContain('───\n✅ Docker\n───\n<b>Details</b>\n• Packages upgradable: 3')
   })
 
   it('undoes the HTML escaping of host_security lines, then escapes once', () => {
@@ -104,5 +105,13 @@ describe('cron reportTitle', () => {
     expect(c.crons.host_alerter_report.vars.REPORT_TITLE).toBe('own')
     expect(c.crons.backup.vars.REPORT_TITLE).toBeUndefined()
     expect(() => parseConfigForTest({ reportTitle: 'a\nb', crons: {} })).toThrow(/one line/)
+  })
+
+  it('reportFull goes to host_ crons as REPORT_FULL', async () => {
+    const { parseConfigForTest } = await import('../../../cli/plugins/cron/index')
+    const c = parseConfigForTest({ reportFull: true, crons: { host_alerter_report: '9:30 AM', backup: '3:00 AM' } })
+    expect(c.crons.host_alerter_report.vars.REPORT_FULL).toBe('true')
+    expect(c.crons.backup.vars.REPORT_FULL).toBeUndefined()
+    expect(() => parseConfigForTest({ reportFull: 'yes', crons: {} })).toThrow(/true or false/)
   })
 })
