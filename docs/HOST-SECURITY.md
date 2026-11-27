@@ -53,7 +53,8 @@ The daily report has four blocks:
 ```text
 📊 VPS web-1 — Daily Status                       title: cron reportTitle, else "📊 <hostname>"
 Host: web-1 · 192.0.2.10                          the machine's main IP (REPORT_SHOW_IP=false hides it)
-290 GB disk · 46 GB RAM · ⏱ up 2 days, 10 hours
+290 GB disk · 46 GB RAM
+⏱ Uptime: 2 days, 10 hours
 
 ⚡ 2 need attention                               (or: ✅ All checks passed)
 
@@ -75,8 +76,12 @@ Host: web-1 · 192.0.2.10                          the machine's main IP (REPORT
 
 - Problems come first: ❌ FAIL, then ⚠️ WARN. Long lists (packages, services) show two lines at most,
   then "+N".
-- `airstack machine report --full` (or `REPORT_FULL=true`) lists every passed check, then a
-  **Details** block: what is reachable from the internet, recent logins, baselines, uptime.
+- **Full report:** set `reportFull: true` on `airstack/cron` to get it every day, or run
+  `airstack machine report --full` once. The last block then lists every check that passed, one
+  line each, and a second `───` block **Details** follows: what is reachable from the internet,
+  SSH logins and failed logins, Tailscale, firewall notes, baselines, upgradable packages.
+  At most 8 security detail lines (`SECURITY_TELEGRAM_MAX_INFO`). Over 4000 characters, detail
+  lines are dropped from the end; problems are never dropped.
 - The 24-hour memory average comes from a sample that the 15-minute `host_alerter` run saves.
 - `airstack machine check` prints the same problems as ok/warn/fail lines, with the fix.
 

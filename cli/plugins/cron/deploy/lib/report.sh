@@ -99,12 +99,15 @@ wrap_list() {
 # Escape text for Telegram HTML.
 tg_esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
-# report_render TITLE HOSTLINE SIZELINE — prints the message (Telegram HTML).
-# Uses: rep_* arrays, REPORT_OVERVIEW (lines), REPORT_DETAILS (lines), REPORT_FULL.
+# report_render TITLE HEADER_LINE... — prints the message (Telegram HTML). Each HEADER_LINE is
+# one line under the title (host, sizes, uptime).
+# Uses: rep_* arrays, REPORT_OVERVIEW (lines), REPORT_DETAILS (lines, already HTML), REPORT_FULL.
 report_render() {
   local i n="${#rep_title[@]}" d
   printf '<b>%s — Daily Status</b>\n' "$(tg_esc "$1")"
-  printf '%s\n%s\n\n' "$(tg_esc "$2")" "$(tg_esc "$3")"
+  shift
+  for d in "$@"; do printf '%s\n' "$(tg_esc "$d")"; done
+  printf '\n'
   if (( n > 0 )); then printf '<b>⚡ %s need attention</b>\n' "$n"; else printf '<b>✅ All checks passed</b>\n'; fi
   for (( i = 0; i < n; i++ )); do
     printf '\n%s <b>%s</b>\n' "${rep_icon[$i]}" "$(tg_esc "${rep_title[$i]}")"
@@ -120,7 +123,7 @@ report_render() {
   printf '───\n'
   if [[ "${REPORT_FULL:-false}" == true ]]; then
     for d in ${rep_pass_lines[@]+"${rep_pass_lines[@]}"}; do printf '%s\n' "$(tg_esc "$d")"; done
-    if [[ -n "${REPORT_DETAILS:-}" ]]; then printf '\n<b>Details</b>\n%s\n' "$REPORT_DETAILS"; fi
+    if [[ -n "${REPORT_DETAILS:-}" ]]; then printf '───\n<b>Details</b>\n%s\n' "$REPORT_DETAILS"; fi
   elif (( ${#rep_pass[@]} > 0 )); then
     local names="" p
     for p in "${rep_pass[@]}"; do names+="${names:+, }$p"; done

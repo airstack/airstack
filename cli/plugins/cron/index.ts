@@ -121,6 +121,15 @@ function parseConfig(raw: unknown): CronPluginConfig {
     }
   }
 
+  // reportFull: true lists every check and a Details block (logins, reachability, Tailscale, …)
+  // in the daily report, instead of one "N checks passed" line.
+  if (obj.reportFull !== undefined) {
+    if (typeof obj.reportFull !== 'boolean') throw new Error('cron reportFull must be true or false')
+    for (const [key, entry] of Object.entries(crons)) {
+      if (key.startsWith('host_') && entry.vars.REPORT_FULL === undefined) entry.vars.REPORT_FULL = String(obj.reportFull)
+    }
+  }
+
   return { defaultTimezone, crons }
 }
 

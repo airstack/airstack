@@ -453,15 +453,26 @@ if $REPORT_MODE; then
     if (( sec_problems == 0 )); then REPORT_OVERVIEW+=$'\n'"✅ Security good: ${sec_checks} checks (firewall, SSH, accounts, …)"
     else REPORT_OVERVIEW+=$'\n'"⚠️ Security: ${sec_problems} of ${sec_checks} checks need attention"; fi
   fi
-  REPORT_DETAILS=$(printf '%s\n' ${details[@]+"${details[@]}"} "⏱ Uptime: ${uptime_str}")
+  REPORT_DETAILS=$(printf '%s\n' ${details[@]+"${details[@]}"})
 
   # Header: which machine this is (several machines can report to one chat).
   title="${REPORT_TITLE:-📊 ${hostname}}"
   ip=""
   [[ "${REPORT_SHOW_IP:-true}" == true ]] && ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')
   host_line="Host: ${hostname}${ip:+ · $ip}"
-  size_line="${disk_total_gb} GB disk · ${mem_total_gb} GB RAM · ⏱ up ${uptime_str}"
-  report=$(report_render "$title" "$host_line" "$size_line")
+  size_line="${disk_total_gb} GB disk · ${mem_total_gb} GB RAM"
+  uptime_line="⏱ Uptime: ${uptime_str}"
+  report=$(report_render "$title" "$host_line" "$size_line" "$uptime_line")
+  # Telegram refuses messages over 4096 characters: drop detail lines from the end until it fits,
+  # then fall back to the short layout. Problems are never dropped.
+  while (( ${#report} > 4000 )) && [[ -n "${REPORT_DETAILS}" ]]; do
+    if [[ "$REPORT_DETAILS" == *$'\n'* ]]; then REPORT_DETAILS="${REPORT_DETAILS%$'\n'*}"; else REPORT_DETAILS=""; fi
+    report=$(report_render "$title" "$host_line" "$size_line" "$uptime_line")
+  done
+  if (( ${#report} > 4000 )); then
+    REPORT_FULL=false
+    report=$(report_render "$title" "$host_line" "$size_line" "$uptime_line")
+  fi
 
   if [[ "${REPORT_OUTPUT:-telegram}" == stdout ]]; then
     printf '%s\n' "$report" | html_to_text
