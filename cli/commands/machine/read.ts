@@ -89,18 +89,47 @@ export function checkCmd(info: NodeInfo, args: string[], out: Output): number {
   return out.code()
 }
 
+/**
+ * The checks in a full text report (lib/report.sh layout): problems come before the first "───"
+ * line, each as an icon line plus indented detail and "🔧" fix lines; passed checks (✅) come after
+ * the second "───", before "Details". One problem becomes one line: "title: first detail (fix: …)".
+ */
+export function parseReportChecks(text: string, verbose: boolean): { level: 'fail' | 'warn' | 'ok'; text: string }[] {
+  const lines = text.split('\n')
+  const out: { level: 'fail' | 'warn' | 'ok'; text: string; detail?: string; fix?: string }[] = []
+  let section = 0
+  for (const line of lines) {
+    if (line.startsWith('───')) { section++; continue }
+    if (/^Details$/.test(line.trim())) break
+    if (section === 0) {
+      if (line.startsWith('❌')) out.push({ level: 'fail', text: line.slice(1).trim() })
+      else if (line.startsWith('⚠️')) out.push({ level: 'warn', text: line.slice(2).trim() })
+      else if (/^\s{2,}\S/.test(line) && out.length) {
+        const cur = out[out.length - 1]
+        const s = line.trim()
+        if (s.startsWith('🔧')) cur.fix = s.replace(/^🔧\s*/, '')
+        else if (cur.detail === undefined) cur.detail = s
+      }
+    } else if (section >= 2 && verbose && line.startsWith('✅')) {
+      out.push({ level: 'ok', text: line.slice(1).trim() })
+    }
+  }
+  return out.map((c) => ({
+    level: c.level,
+    text: c.text + (c.detail ? `: ${c.detail}` : '') + (c.fix ? ` (fix: ${c.fix})` : ''),
+  }))
+}
+
 function checkFromReport(c: { script: string; env?: string }, verbose: boolean, out: Output): number {
   const r = runWithEnv(c.script, ['--report'], c.env, { REPORT_OUTPUT: 'stdout', REPORT_FULL: 'true' })
   if (r.code !== 0) {
     out.fail(`checks failed to run: ${r.err.trim().split('\n').pop() ?? `exit ${r.code}`}`)
     return EXIT.FAIL
   }
-  // Check lines come before the "Details" heading; details are information, not checks.
-  const checks = r.out.split(/\n\s*\n\s*\nDetails\n/)[0].split('\n')
-  for (const line of checks) {
-    if (line.startsWith('❌')) out.fail(line.slice(1).trim())
-    else if (line.startsWith('⚠️')) out.warn(line.slice(2).trim())
-    else if (line.startsWith('✅') && verbose && !/^✅ All checks passed/.test(line)) out.ok(line.slice(1).trim())
+  for (const line of parseReportChecks(r.out, verbose)) {
+    if (line.level === 'fail') out.fail(line.text)
+    else if (line.level === 'warn') out.warn(line.text)
+    else out.ok(line.text)
   }
   if (out.code() === EXIT.OK) out.ok('all checks passed (-v lists them)')
   return out.code()

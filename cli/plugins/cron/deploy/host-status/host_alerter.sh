@@ -90,6 +90,13 @@ mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
 mem_available=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
 mem_pct=$(( (mem_total - mem_available) * 100 / mem_total ))
 mem_total_gb=$(awk '/MemTotal/ {printf "%.0f", $2/1024/1024}' /proc/meminfo)
+# Memory samples (the 15-minute run adds one; the report shows the 24-hour average).
+MEM_SAMPLES="${STATE_DIR}/host-health/mem-samples"
+mem_avg_used() { awk -v now="$(date +%s)" '$1 >= now - 86400 { s += $2; n++ } END { if (n) printf "%d", s / n }' "$MEM_SAMPLES" 2>/dev/null || true; }
+mem_record() {
+  mkdir -p "$(dirname "$MEM_SAMPLES")" 2>/dev/null || return 0
+  { tail -n 200 "$MEM_SAMPLES" 2>/dev/null; echo "$(date +%s) $mem_pct"; } > "$MEM_SAMPLES.new" && mv -f "$MEM_SAMPLES.new" "$MEM_SAMPLES"
+}
 if (( mem_pct > MEMORY_THRESHOLD )); then
   alerts+=("⚠️ Memory usage at ${mem_pct}% (threshold: ${MEMORY_THRESHOLD}%)")
 fi
@@ -304,12 +311,6 @@ join_lines() { local IFS=';'; printf '%s' "$*" | sed 's/;/; /g'; }
 # <<< access-guard
 
 # >>> report-format (tests run this block alone)
-# Names of passed checks: "✅ Disk: 12% …" -> "Disk", joined with ", ".
-passed_names() {
-  local l n out=""
-  for l in "$@"; do n="${l#✅ }"; n="${n%%:*}"; out+="${out:+, }$n"; done
-  printf '%s' "$out"
-}
 # Telegram HTML -> plain text (REPORT_OUTPUT=stdout).
 html_to_text() { sed -e 's/<[^>]*>//g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e 's/&amp;/\&/g'; }
 # <<< report-format
@@ -332,170 +333,135 @@ if $REPORT_MODE; then
     container_running=$(docker ps --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
   fi
 
-  # Two groups: CHECKS (pass/fail; problems first, then ✅) and DETAILS (informational only).
-  warn_count=0
-  problems=()   # ❌ / ⚠️ lines
-  passes=()     # ✅ lines
-  details=()    # informational lines (no pass/fail)
-  chk() { case "$1" in ✅*) passes+=("$1") ;; *) problems+=("$1") ;; esac; }
+  # Layout and fix hints: plugins/cron/lib/report.sh. Problems get a title, detail lines and a fix;
+  # passed checks become one summary line (REPORT_FULL=true: every check plus the details).
+  source "${INSTALL_DIR}/plugins/cron/lib/report.sh"
+  details=()
+  disk_free_pct=$(( 100 - disk_pct ))
 
   if (( disk_pct > DISK_THRESHOLD )); then
-    chk "⚠️ Disk: ${disk_pct}% of ${disk_total_gb} GB (limit ${DISK_THRESHOLD}%)"
-    ((warn_count+=1))
+    report_problem "⚠️" "Disk ${disk_pct}% used of ${disk_total_gb} GB" "limit ${DISK_THRESHOLD}%"
   else
-    chk "✅ Disk: ${disk_pct}% of ${disk_total_gb} GB (limit ${DISK_THRESHOLD}%)"
+    report_pass "✅ Disk: ${disk_pct}% of ${disk_total_gb} GB"
   fi
-
   if (( DISK_FREE_MIN_GB > 0 )); then
     if (( disk_free_gb < DISK_FREE_MIN_GB )); then
-      chk "⚠️ Free space: ${disk_free_gb} GB on / (minimum ${DISK_FREE_MIN_GB} GB)"
-      ((warn_count+=1))
+      report_problem "⚠️" "Free space low: ${disk_free_gb} GB on /" "minimum ${DISK_FREE_MIN_GB} GB"
     else
-      chk "✅ Free space: ${disk_free_gb} GB on / (minimum ${DISK_FREE_MIN_GB} GB)"
+      report_pass "✅ Free space: ${disk_free_gb} GB on /"
     fi
   fi
-
+  inode_bad=false
   for m in "${!seen_mounts[@]}"; do
     read -r target space_used inode_free < <(mount_stats "$m")
     if (( inode_free < INODE_FREE_MIN_PCT )); then
-      chk "⚠️ Inodes on $target: ${inode_free}% free (minimum ${INODE_FREE_MIN_PCT}%)"
-      ((warn_count+=1))
+      inode_bad=true
+      report_problem "⚠️" "Inodes low on $target: ${inode_free}% free" "minimum ${INODE_FREE_MIN_PCT}%"
     else
-      chk "✅ Inodes on $target: ${inode_free}% free"
+      report_pass "✅ Inodes on $target: ${inode_free}% free"
     fi
   done
-
   if (( mem_pct > MEMORY_THRESHOLD )); then
-    chk "⚠️ Memory: ${mem_pct}% of ${mem_total_gb} GB (limit ${MEMORY_THRESHOLD}%)"
-    ((warn_count+=1))
+    report_problem "⚠️" "Memory ${mem_pct}% used of ${mem_total_gb} GB" "limit ${MEMORY_THRESHOLD}%"
   else
-    chk "✅ Memory: ${mem_pct}% of ${mem_total_gb} GB (limit ${MEMORY_THRESHOLD}%)"
+    report_pass "✅ Memory: ${mem_pct}% of ${mem_total_gb} GB"
   fi
-
   if (( load_int >= cpu_count )); then
-    chk "⚠️ Load: ${load_avg} / ${cpu_count} CPUs"
-    ((warn_count+=1))
+    report_problem "⚠️" "Load ${load_avg} on ${cpu_count} CPUs"
   else
-    chk "✅ Load: ${load_avg} / ${cpu_count} CPUs"
+    report_pass "✅ Load: ${load_avg} / ${cpu_count} CPUs"
   fi
-
-  if $docker_ok; then
-    chk "✅ Docker"
-  else
-    chk "❌ Docker: not responding"
-    ((warn_count+=1))
-  fi
-
+  if $docker_ok; then report_pass "✅ Docker"; else report_problem "❌" "Docker does not respond"; fi
   if $docker_ok; then
     if $containers_all_ok; then
-      chk "✅ Containers: ${container_running}/${container_total} running"
+      report_pass "✅ Containers: ${container_running}/${container_total} running"
     else
       while IFS= read -r expected; do
         [ -n "$expected" ] || continue
-        if echo "$restarting" | grep -qx "$expected" 2>/dev/null; then
-          chk "❌ ${expected}: restarting"
-          ((warn_count+=1))
-        elif ! echo "$running" | grep -qx "$expected" 2>/dev/null; then
-          chk "❌ ${expected}: stopped"
-          ((warn_count+=1))
-        fi
+        if echo "$restarting" | grep -qx "$expected" 2>/dev/null; then report_problem "❌" "${expected}: restarting"
+        elif ! echo "$running" | grep -qx "$expected" 2>/dev/null; then report_problem "❌" "${expected}: stopped"; fi
       done < <(all_expected_containers)
       details+=("• Containers: ${container_running}/${container_total} running")
     fi
   else
-    chk "⚠️ Containers: unknown (Docker down)"
-    ((warn_count+=1))
+    report_problem "⚠️" "Containers: unknown (Docker is down)"
   fi
-  if [[ -n "$crashed" ]]; then
-    chk "⚠️ Unexpected restarting: ${crashed}"
-    ((warn_count+=1))
-  fi
+  [[ -n "$crashed" ]] && report_problem "⚠️" "Unexpected restarting: ${crashed}"
 
   if $backup_ok && [[ -n "$backup_status_text" ]]; then
-    chk "✅ Backup: ${backup_status_text} ago"
+    report_pass "✅ Backup: ${backup_status_text} ago"
   elif $backup_ok; then
     details+=("• Backup: no stack on this machine uses the backup plugin")
   else
-    chk "⚠️ Backup: $(IFS=';'; echo "${backup_problems[*]}" | sed 's/;/; /g')"
-    ((warn_count+=1))
+    report_problem "⚠️" "Backup" "$(printf '%s\n' "${backup_problems[@]}")"
   fi
 
-  # Maintenance (from own stack state dir)
+  # Maintenance (written daily by host_maintenance.sh)
   maint_file="${STATE_DIR}/host-health/maintenance.json"
-  if [[ -f "$maint_file" ]]; then
-    maint_age_seconds=$(( $(date +%s) - $(stat -c %Y "$maint_file" 2>/dev/null || echo 0) ))
-    maint_age_hours=$(( maint_age_seconds / 3600 ))
-    if (( maint_age_hours > 26 )); then
-      chk "⚠️ Maintenance: data stale (${maint_age_hours}h old)"
-      ((warn_count+=1))
-    else
-      security_updates=$(python3 -c "import json; d=json.load(open('${maint_file}')); print(d.get('security_updates', 0))" 2>/dev/null || echo "?")
-      total_upgradable=$(python3 -c "import json; d=json.load(open('${maint_file}')); print(d.get('total_upgradable', 0))" 2>/dev/null || echo "?")
-      reboot_required=$(python3 -c "import json; d=json.load(open('${maint_file}')); print(d.get('reboot_required', False))" 2>/dev/null || echo "?")
-      failed_services=$(python3 -c "import json; d=json.load(open('${maint_file}')); print(d.get('failed_services', 'none'))" 2>/dev/null || echo "?")
-      uptime_days=$(python3 -c "import json; d=json.load(open('${maint_file}')); print(d.get('uptime_days', '?'))" 2>/dev/null || echo "?")
-
-      :
-      if [[ "$security_updates" != "0" && "$security_updates" != "?" ]]; then
-        chk "⚠️ Security updates: ${security_updates}"
-        ((warn_count+=1))
-      else
-        chk "✅ Security updates: ${security_updates}"
-      fi
-      details+=("• Packages upgradable: ${total_upgradable}")
-      if [[ "$reboot_required" == "True" ]]; then
-        chk "⚠️ Reboot required: yes"
-        ((warn_count+=1))
-      else
-        chk "✅ Reboot required: no"
-      fi
-      if [[ "$failed_services" != "none" && "$failed_services" != "?" ]]; then
-        chk "⚠️ Failed services: ${failed_services}"
-        ((warn_count+=1))
-      else
-        chk "✅ Failed services: none"
-      fi
-      :
-    fi
-  else
+  jget() { jq -r "$1 // empty" "$maint_file" 2>/dev/null; }
+  if [[ ! -f "$maint_file" ]]; then
     details+=("• Maintenance: no data yet (the daily checker has not run)")
+  elif (( ( $(date +%s) - $(stat -c %Y "$maint_file" 2>/dev/null || echo 0) ) / 3600 > 26 )); then
+    report_problem "⚠️" "Maintenance data is stale" "host_maintenance has not run for more than a day"
+  else
+    security_updates=$(jget .security_updates); security_updates="${security_updates:-0}"
+    if [[ "$security_updates" != 0 ]]; then
+      pkgs=$(jget .security_packages)
+      pkg_detail=""
+      [[ -n "$pkgs" ]] && pkg_detail=$(wrap_list 56 $pkgs | sed '1s/^/apt: /; 2,$s/^/     /')
+      report_problem "⚠️" "Security updates pending: ${security_updates}" "$pkg_detail"
+    else
+      report_pass "✅ Security updates: none pending"
+    fi
+    details+=("• Packages upgradable: $(jget .total_upgradable)")
+    if [[ "$(jget .reboot_required)" == true ]]; then report_problem "⚠️" "Reboot required"; else report_pass "✅ Reboot required: no"; fi
+    failed=$(jget .failed_services)
+    if [[ -n "$failed" && "$failed" != none ]]; then report_problem "⚠️" "Failed services" "$(wrap_list 56 ${failed//,/ })"; else report_pass "✅ Failed services: none"; fi
   fi
 
-  # Security (host_security.sh --telegram): its CHECK lines join the checks, INFO lines the details.
+  # Security (host_security.sh --telegram): CHECK lines join the checks, INFO lines the details.
   security_report="${SECURITY_REPORT:-auto}"
   if [[ "$security_report" == auto ]]; then
     [[ -f "${SECURITY_SCRIPT:-${INSTALL_DIR}/plugins/cron/host-status/host_security.sh}" ]] && security_report=true || security_report=false
   fi
-  sec_details=()
+  sec_problems=0; sec_checks=0
   if [[ "$security_report" == true ]]; then
-    used=$(printf '%s\n' "${problems[@]}" "${passes[@]}" "${details[@]}" | wc -c)
-    security_section "$used"
+    security_section 600
+    before=${#rep_title[@]}
     while IFS= read -r line; do
       case "$line" in
-        CHECK\|*) chk "${line#CHECK|}" ;;
-        INFO\|*) sec_details+=("${line#INFO|}") ;;
+        CHECK\|*) report_line "${line#CHECK|}"; sec_checks=$((sec_checks + 1)) ;;
+        INFO\|*) details+=("${line#INFO|}") ;;
         "") ;;
-        *) chk "$line" ;;   # e.g. "⚠️ Security checks failed to run"
+        *) report_line "$line"; sec_checks=$((sec_checks + 1)) ;;
       esac
     done <<<"$SECURITY_SECTION"
+    sec_problems=$(( ${#rep_title[@]} - before ))
   fi
 
-  # Assemble. Short (default): problems, then one line that names the passed checks.
-  # Full (REPORT_FULL=true, `airstack machine report --full`): every check, then the details.
-  nprob=${#problems[@]}
-  report="📊 <b>${hostname}</b> — Daily Status"
-  if (( nprob > 0 )); then report+=$'\n'"<b>⚡ ${nprob} need attention</b>"
-  else report+=$'\n'"<b>✅ All checks passed</b>"; fi
-  report+=$'\n'
-  for line in ${problems[@]+"${problems[@]}"}; do report+=$'\n'"$line"; done
-  if [[ "${REPORT_FULL:-false}" == true ]]; then
-    for line in ${passes[@]+"${passes[@]}"}; do report+=$'\n'"$line"; done
-    report+=$'\n'$'\n'$'\n'"<b>Details</b>"
-    for line in ${sec_details[@]+"${sec_details[@]}"} ${details[@]+"${details[@]}"}; do report+=$'\n'"$line"; done
-  elif (( ${#passes[@]} > 0 )); then
-    report+=$'\n'"✅ ${#passes[@]} passed: $(passed_names "${passes[@]}")"
+  # Overview: one line per area.
+  disk_icon="✅"; disk_word="good"
+  if (( disk_pct > DISK_THRESHOLD )) || $inode_bad || (( DISK_FREE_MIN_GB > 0 && disk_free_gb < DISK_FREE_MIN_GB )); then disk_icon="⚠️"; disk_word="low"; fi
+  mem_free_pct=$(( 100 - mem_pct ))
+  mem_avg=$(mem_avg_used)
+  mem_note="${mem_free_pct}% free"
+  [[ -n "$mem_avg" ]] && mem_note+=", 24 h average $(( 100 - mem_avg ))% free"
+  mem_icon="✅"; mem_word="good"
+  if (( mem_pct > MEMORY_THRESHOLD )); then mem_icon="⚠️"; mem_word="high"; fi
+  REPORT_OVERVIEW="${disk_icon} Disk ${disk_word}: ${disk_free_pct}% free of ${disk_total_gb} GB"$'\n'"${mem_icon} Memory ${mem_word}: ${mem_note}"
+  if [[ "$security_report" == true ]]; then
+    if (( sec_problems == 0 )); then REPORT_OVERVIEW+=$'\n'"✅ Security good: ${sec_checks} checks (firewall, SSH, accounts, …)"
+    else REPORT_OVERVIEW+=$'\n'"⚠️ Security: ${sec_problems} of ${sec_checks} checks need attention"; fi
   fi
-  report+=$'\n'"⏱ Uptime: ${uptime_str}"
+  REPORT_DETAILS=$(printf '%s\n' ${details[@]+"${details[@]}"} "⏱ Uptime: ${uptime_str}")
+
+  # Header: which machine this is (several machines can report to one chat).
+  title="${REPORT_TITLE:-📊 ${hostname}}"
+  ip=""
+  [[ "${REPORT_SHOW_IP:-true}" == true ]] && ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')
+  host_line="Host: ${hostname}${ip:+ · $ip}"
+  size_line="${disk_total_gb} GB disk · ${mem_total_gb} GB RAM · ⏱ up ${uptime_str}"
+  report=$(report_render "$title" "$host_line" "$size_line")
 
   if [[ "${REPORT_OUTPUT:-telegram}" == stdout ]]; then
     printf '%s\n' "$report" | html_to_text
@@ -515,6 +481,7 @@ fi
 # --- Normal alert mode: only alert on state change ---
 # Outbound sampler runs on exit (after the alert work), whatever path the script exits by.
 trap 'security_sample' EXIT
+mem_record || true
 access_alerts   # before the Telegram check: onScan: stop must work without Telegram
 if ! $TELEGRAM_CONFIGURED; then exit 0; fi
 
@@ -532,7 +499,7 @@ fi
 
 hostname=$(hostname)
 curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-  -d "chat_id=${TELEGRAM_CHAT_ID}" -d "text=${hostname}: ${message}" -d "parse_mode=HTML" \
+  -d "chat_id=${TELEGRAM_CHAT_ID}" -d "text=${REPORT_TITLE:-$hostname}: ${message}" -d "parse_mode=HTML" \
   | grep -q '"ok":true' || echo "$(date): Telegram alert send failed" >&2
 
 exit 0

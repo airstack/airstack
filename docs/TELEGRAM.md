@@ -39,6 +39,7 @@ Put both values in the machine's secrets file and reference them from the cron c
 ```yaml
 plugins:
   airstack/cron:
+    reportTitle: "📊 VPS web-1"     # optional: first line of reports and alerts (default "📊 <hostname>")
     crons:
       host_alerter:
         schedule: "*/15 * * * *"
@@ -55,6 +56,9 @@ plugins:
 
 On the VPS, cron `env:` values are written to root-owned `crons/env.d/*.env` files (mode 600),
 never to `/etc/cron.d`.
+
+`reportTitle` helps when several machines report to one chat: give each machine its own emoji and
+label. It goes to every `host_` cron; a cron that sets `REPORT_TITLE` in its own `env:` keeps that.
 
 ## How alerts work
 

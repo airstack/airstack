@@ -95,6 +95,8 @@ function parseCronEntry(key: string, value: string | Record<string, unknown>, de
   return { schedule: parsed.cronExpr, script, user, timezone, vars }
 }
 
+export { parseConfig as parseConfigForTest }
+
 function parseConfig(raw: unknown): CronPluginConfig {
   const obj = (raw || {}) as Record<string, unknown>
   const defaultTimezone = String(obj.defaultTimezone || '')
@@ -104,6 +106,18 @@ function parseConfig(raw: unknown): CronPluginConfig {
   for (const [key, value] of Object.entries(rawCrons)) {
     if (typeof value === 'string' || (typeof value === 'object' && value !== null)) {
       crons[key] = parseCronEntry(key, value as string | Record<string, unknown>, defaultTimezone)
+    }
+  }
+
+  // reportTitle: the first line of host reports and alerts (e.g. "📊 VPS web-1"). It goes to the
+  // env of every host_ cron, unless that cron sets REPORT_TITLE itself.
+  if (obj.reportTitle !== undefined) {
+    const title = String(obj.reportTitle)
+    if (!title.trim() || /[\r\n]/.test(title) || title.length > 80) {
+      throw new Error('cron reportTitle must be one line of 1-80 characters')
+    }
+    for (const [key, entry] of Object.entries(crons)) {
+      if (key.startsWith('host_') && entry.vars.REPORT_TITLE === undefined) entry.vars.REPORT_TITLE = title
     }
   }
 
@@ -159,7 +173,7 @@ async function preStageHook(ctx: DeployContext, raw: unknown): Promise<void> {
   const { projectName } = ctx.config.stack
 
   // Register sourced library (not directly executed)
-  ctx.registeredFiles.scripts.exclude.push('plugins/cron/lib/stacks.sh')
+  ctx.registeredFiles.scripts.exclude.push('plugins/cron/lib/stacks.sh', 'plugins/cron/lib/report.sh')
   // Per-stack security checks (project deploy/security.d/*.sh, run by host_security.sh) must be executable
   if (!ctx.registeredFiles.scripts.dirs.includes('security.d')) ctx.registeredFiles.scripts.dirs.push('security.d')
 
