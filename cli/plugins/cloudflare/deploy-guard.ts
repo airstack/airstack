@@ -52,7 +52,14 @@ export async function accessGuard(ctx: DeployContext, cfg: AccessConfig, opts: G
     return
   }
 
-  const results = await checkRoutes(rules, cfg, opts.probe)
+  let results = await checkRoutes(rules, cfg, opts.probe)
+  // A first request can time out (cold DNS, a new tunnel connection). Ask once more before warning.
+  const unknown = rules.filter((_, i) => results[i].state === 'unknown')
+  if (unknown.length) {
+    await (opts.sleep ?? wait)(3000)
+    const again = await checkRoutes(unknown, cfg, opts.probe)
+    results = results.map((r) => (r.state === 'unknown' ? again.find((a) => a.url === r.url) ?? r : r))
+  }
   for (const r of results) {
     if (r.state === 'protected') ctx.log.info(`Cloudflare Access: ${r.label} is protected`)
     if (r.state === 'unknown') warn(`Cloudflare Access: cannot verify ${r.label} (HTTP ${r.code || 'no answer'})`)

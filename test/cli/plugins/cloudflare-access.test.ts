@@ -139,3 +139,19 @@ describe('accessGuard (deploy)', () => {
     expect(b.c.errors[0].fatal).toBe(false)
   })
 })
+
+describe('accessGuard retries an unknown route once', () => {
+  it('a route that times out first and answers next is protected, no warning', async () => {
+    let calls = 0
+    const probe = async () => (++calls === 1 ? answer(0) : answer(302, LOGIN))
+    const json = JSON.stringify({ config: { ingress: [{ hostname: 'app.example.com', service: 'http://localhost:1' }] } })
+    const c = {
+      config: { host: { appUser: 'u' }, stack: { installDir: '/d', projectName: 'airstack', runUserKind: 'stack' } },
+      compose: { skip: false }, errors: [], log: nullLogger,
+      remote: { run: async () => ({ stdout: json, stderr: '', exitCode: 0 }), rsync: async () => ({ exitCode: 0 }) },
+    } as unknown as DeployContext
+    await accessGuard(c, parseAccessConfig({}), { probe, tries: 1, sleep: async () => {} })
+    expect(calls).toBe(2)
+    expect(c.errors).toEqual([])
+  })
+})
